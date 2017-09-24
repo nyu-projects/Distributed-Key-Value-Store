@@ -8,9 +8,10 @@ package simplepb
 
 import (
 	"sync"
-    //"fmt"
+    "fmt"
     //"math/rand"
 	"labrpc"
+	"time"
 )
 
 // the 3 possible server status
@@ -32,6 +33,7 @@ type PBServer struct {
 	log         []interface{} // the log of "commands"
 	commitIndex int           // all log entries <= commitIndex are considered to have been committed.
 
+    //backupChan  chan int
 	// ... other state that you might need ...
 }
 
@@ -140,7 +142,7 @@ func Make(peers []*labrpc.ClientEnd, me int, startingView int) *PBServer {
 	// all servers' log are initialized with a dummy command at index 0
 	var v interface{}
 	srv.log = append(srv.log, v)
-
+    //srv.backupChan = make(chan, int)
 	// Your other initialization code here, if there's any
 	return srv
 }
@@ -169,13 +171,14 @@ func (srv *PBServer) Start(command interface{}) (
 		return -1, srv.currentView, false
 	}
 
+	//Append current command to primary's log
+	srv.log = append(srv.log, command)
+
 	//Current server is the primary one
     go func () {
-        //Append current command to primary's log
-        srv.log = append(srv.log, command)
-
         //Send Prepare to all the replicas
         c := make(chan *PrepareReply)
+		srv.mu.Lock()
         for idx := 0; idx < len(srv.peers); idx++ {
             if idx != srv.me {
                 args := &PrepareArgs{
@@ -190,21 +193,28 @@ func (srv *PBServer) Start(command interface{}) (
                 go srv.sendPrepare(idx, args, reply, c)
             }
         }
+		srv.mu.Unlock()
 
         //Collect all the PrepareReplys
-        numReplys := 0;
-        for numReplys < len(srv.peers) / 2 {
+        numCorrectReplys := 0
+		numReplys := 0
+        for numReplys < len(srv.peers) {
             reply := <-c
             if reply.Success {
-                numReplys += 1
+                numCorrectReplys += 1
             }
+			numReplys += 1
         }
 
         //Update index view and ok
-        srv.commitIndex += 1
+		srv.mu.Lock()
+		if numCorrectReplys > len(srv.peers) / 2 {
+			srv.commitIndex += 1
+		}
+		srv.mu.Unlock()
     }()
 
-    index = srv.commitIndex + 1
+    index = len(srv.log)
     view = srv.currentView
     ok = true
 	return index, view, ok
@@ -247,8 +257,8 @@ func (srv *PBServer) sendPrepare(server int, args *PrepareArgs, reply *PrepareRe
 
 func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 	// Your code here
-    srv.mu.Lock()
-    defer srv.mu.Unlock()
+//    srv.mu.Lock()
+//    defer srv.mu.Unlock()
     // do not process command if status is not NORMAL
     // and if i am the primary in the current view
     if srv.status != NORMAL {
@@ -259,7 +269,8 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 		reply.Success = false
     }
 
-    if srv.currentView != args.View || len(srv.log) < args.Index-1 {
+    if srv.currentView != args.View {
+//		srv.mu.Unlock()
 		reply.View = srv.currentView
 		reply.Success = false
 
@@ -272,20 +283,76 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 
         if ok {
             if recoveryReply.Success {
+				srv.mu.Lock()
                 srv.currentView = recoveryReply.View
                 srv.log = make([]interface{}, len(recoveryReply.Entries))
                 copy(srv.log, recoveryReply.Entries)
                 srv.commitIndex = recoveryReply.PrimaryCommit
+				srv.mu.Unlock()
             }
         }
-	} else {
+	} else if len(srv.log) < args.Index-1 {
+//		srv.mu.Unlock()
+		timeout := time.After(100 * time.Millisecond)
+		pollInt := time.Millisecond
+		endSignal := make(chan bool, 1)
+
+		for {
+			go checkIndex(len(srv.log), args.Index-1, endSignal)
+			select {
+				case <- endSignal:
+					srv.mu.Lock()
+					fmt.Println("thread restarting.")
+	                srv.log = append(srv.log, args.Entry)
+    	            srv.commitIndex = args.PrimaryCommit
+            	    reply.View = srv.currentView
+                	reply.Success = true
+					srv.mu.Unlock()
+					return
+				case <- timeout:
+					fmt.Println("timed out while waiting for index update. recovery called")
+	                reply.View = srv.currentView
+    	            reply.Success = false
+        	        recoveryArgs := &RecoveryArgs{
+            	        View : args.View,
+                	    Server: srv.me}
+	                recoveryReply := &RecoveryReply{}
+    	            ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
+
+        	        if ok {
+            	        if recoveryReply.Success {
+							srv.mu.Lock()
+                	        srv.currentView = recoveryReply.View
+                    	    srv.log = make([]interface{}, len(recoveryReply.Entries))
+                        	copy(srv.log, recoveryReply.Entries)
+	                        srv.commitIndex = recoveryReply.PrimaryCommit
+							srv.mu.Unlock()
+    	                }
+                	}
+					return
+				default:
+					fmt.Println("waiting for another thread to update index")
+			}
+			time.Sleep(pollInt)
+		}
+    } else {
         //Current server is backup and args' view and message index are fine
+		srv.mu.Lock()
 	    srv.log = append(srv.log, args.Entry)
 	    srv.commitIndex = args.PrimaryCommit
-
+        //srv.backupChan() <-args.Index-1
         reply.View = srv.currentView
 	    reply.Success = true
+		srv.mu.Unlock()
     }
+}
+
+func checkIndex(srvloglen int, argsIdx int, endSignal chan bool) {
+	if srvloglen == argsIdx {
+		endSignal <- true
+	} else {
+		endSignal <- false
+	}
 }
 
 // Recovery is the RPC handler for the Recovery RPC
