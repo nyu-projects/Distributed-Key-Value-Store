@@ -8,8 +8,8 @@ package simplepb
 
 import (
 	"sync"
-    "fmt"
-    "math/rand"
+    //"fmt"
+    //"math/rand"
 	"labrpc"
 )
 
@@ -172,31 +172,29 @@ func (srv *PBServer) Start(command interface{}) (
 	//Current server is the primary one
     go func () {
         //Append current command to primary's log
-        append(srv.log, command);
+        srv.log = append(srv.log, command)
 
         //Send Prepare to all the replicas
         c := make(chan *PrepareReply)
-        for idx = 0; idx < len(srv.peers); idx++ {
+        for idx := 0; idx < len(srv.peers); idx++ {
             if idx != srv.me {
                 args := &PrepareArgs{
                     View: srv.currentView,
                     PrimaryCommit: srv.commitIndex,
                     Index: len(srv.log),
-                    Entry: command
-                }
+                    Entry: command}
 
                 reply := &PrepareReply{};
 
-               //Starting a new thread to send Prepare RPC to server idx
-                go sendPrepare(idx, args *PrepareArgs, reply *PrepareReply, c)
-
+                //Starting a new thread to send Prepare RPC to server idx
+                go srv.sendPrepare(idx, args, reply, c)
             }
         }
 
         //Collect all the PrepareReplys
-        numReplys = 0;
+        numReplys := 0;
         for numReplys < len(srv.peers) / 2 {
-            reply <- c
+            reply := <-c
             if reply.Success {
                 numReplys += 1
             }
@@ -237,15 +235,78 @@ func (srv *PBServer) sendPrepare(server int, args *PrepareArgs, reply *PrepareRe
 }
 
 // Prepare is the RPC handler for the Prepare RPC
-
+// Backup checks whether the message's view and its currentView match
+// & the next entry to be added to the log is indeed at the index specified in the message. 
+// If so, the backup adds the message's entry to the log and replies Success=ok. 
+// Otherwise, the backup replies Success=false. 
+// Furthermore, if the backup's state falls behind the primary 
+// (e.g. its view is smaller or its log is missing entries), 
+// it performs recovery to transfer the primary's log.
+// The backup server needs to process Prepare messages according to their index order, 
+// otherwise, it would end up unnecessarily rejecting many messages. 
 
 func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 	// Your code here
+    srv.mu.Lock()
+    defer srv.mu.Unlock()
+    // do not process command if status is not NORMAL
+    // and if i am the primary in the current view
+    if srv.status != NORMAL {
+		reply.View = srv.currentView
+		reply.Success = false
+    } else if GetPrimary(srv.currentView, len(srv.peers)) == srv.me {
+        reply.View = srv.currentView
+		reply.Success = false
+    }
+
+    if srv.currentView != args.View || len(srv.log) < args.Index-1 {
+		reply.View = srv.currentView
+		reply.Success = false
+
+        recoveryArgs := &RecoveryArgs{
+            View : args.View,
+            Server: srv.me}
+        recoveryReply := &RecoveryReply{}
+
+        ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
+
+        if ok {
+            if recoveryReply.Success {
+                srv.currentView = recoveryReply.View
+                srv.log = make([]interface{}, len(recoveryReply.Entries))
+                copy(srv.log, recoveryReply.Entries)
+                srv.commitIndex = recoveryReply.PrimaryCommit
+            }
+        }
+	} else {
+        //Current server is backup and args' view and message index are fine
+	    srv.log = append(srv.log, args.Entry)
+	    srv.commitIndex = args.PrimaryCommit
+
+        reply.View = srv.currentView
+	    reply.Success = true
+    }
 }
 
 // Recovery is the RPC handler for the Recovery RPC
 func (srv *PBServer) Recovery(args *RecoveryArgs, reply *RecoveryReply) {
-	// Your code here
+    srv.mu.Lock()
+    defer srv.mu.Unlock()
+    // do not process command if status is not NORMAL
+    // and if i am not the primary in the current view
+    if srv.status != NORMAL {
+		reply.Success = false;
+    } else if GetPrimary(srv.currentView, len(srv.peers)) != srv.me {
+        reply.Success = false;
+    } else {
+		//Current server is the primary one
+	    reply.View = srv.currentView
+		reply.Entries = make([]interface{}, len(srv.log))
+        copy(reply.Entries, srv.log)
+
+		reply.PrimaryCommit = srv.commitIndex
+		reply.Success = true
+	}
 }
 
 // Some external oracle prompts the primary of the newView to
@@ -271,7 +332,7 @@ func (srv *PBServer) PromptViewChange(newView int) {
 		go func(server int) {
 			var reply ViewChangeReply
 			ok := srv.peers[server].Call("PBServer.ViewChange", vcArgs, &reply)
-			// fmt.Printf("node-%d (nReplies %d) received reply ok=%v reply=%v\n", srv.me, nReplies, ok, r.reply)
+			//fmt.Printf("node-%d (nReplies %d) received reply ok=%v reply=%v\n", srv.me, nReplies, ok, r.reply)
 			if ok {
 				vcReplyChan <- &reply
 			} else {
