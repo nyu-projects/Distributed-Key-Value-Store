@@ -8,7 +8,8 @@ package simplepb
 
 import (
 	"sync"
-
+    "fmt"
+    "math/rand"
 	"labrpc"
 )
 
@@ -168,8 +169,46 @@ func (srv *PBServer) Start(command interface{}) (
 		return -1, srv.currentView, false
 	}
 
-	// Your code here
+	//Current server is the primary one
+    go func () {
+        //Append current command to primary's log
+        append(srv.log, command);
 
+        //Send Prepare to all the replicas
+        c := make(chan *PrepareReply)
+        for idx = 0; idx < len(srv.peers); idx++ {
+            if idx != srv.me {
+                args := &PrepareArgs{
+                    View: srv.currentView,
+                    PrimaryCommit: srv.commitIndex,
+                    Index: len(srv.log),
+                    Entry: command
+                }
+
+                reply := &PrepareReply{};
+
+               //Starting a new thread to send Prepare RPC to server idx
+                go sendPrepare(idx, args *PrepareArgs, reply *PrepareReply, c)
+
+            }
+        }
+
+        //Collect all the PrepareReplys
+        numReplys = 0;
+        for numReplys < len(srv.peers) / 2 {
+            reply <- c
+            if reply.Success {
+                numReplys += 1
+            }
+        }
+
+        //Update index view and ok
+        srv.commitIndex += 1
+    }()
+
+    index = srv.commitIndex + 1
+    view = srv.currentView
+    ok = true
 	return index, view, ok
 }
 
@@ -188,12 +227,18 @@ func (srv *PBServer) Start(command interface{}) (
 // Call() returns false. Thus Call() may not return for a while.
 // A false return can be caused by a dead server, a live server that
 // can't be reached, a lost request, or a lost reply.
-func (srv *PBServer) sendPrepare(server int, args *PrepareArgs, reply *PrepareReply) bool {
+func (srv *PBServer) sendPrepare(server int, args *PrepareArgs, reply *PrepareReply, c chan *PrepareReply) {
 	ok := srv.peers[server].Call("PBServer.Prepare", args, reply)
-	return ok
+    if !ok {
+        //Create a failed reply
+        reply.Success = false
+    }
+    c <- reply
 }
 
 // Prepare is the RPC handler for the Prepare RPC
+
+
 func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 	// Your code here
 }
