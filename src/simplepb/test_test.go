@@ -145,7 +145,7 @@ func Test1AFailNoCommitPB(t *testing.T) {
 	if index2 != 3 {
 		t.Fatalf("unexpected index %v\n", index2)
 	}
-
+    
 	cfg.replicateOne(primaryID, 4004, servers)
 
 	// disconnect the primary
@@ -172,6 +172,8 @@ func Test1AFailNoCommitPB(t *testing.T) {
 	if index4 != 6 {
 		t.Fatalf("unexpected index %v\n", index3)
 	}
+
+    
 	cfg.replicateOne(primaryID, 4007, servers)
 
 	fmt.Printf(" ... Passed\n")
