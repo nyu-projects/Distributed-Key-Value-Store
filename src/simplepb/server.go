@@ -299,9 +299,9 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 		reply.View = srv.currentView
 		reply.Success = false
         return
-    } else if GetPrimary(srv.currentView, len(srv.peers)) == srv.me {
+    } else if GetPrimary(srv.currentView, len(srv.peers)) == srv.me && srv.currentView == args.View {
         reply.View = srv.currentView
-		reply.Success = false
+		reply.Success = true
         return
     }
     fmt.Println("Prepare: srv.me ", srv.me, "srv.status", srv.status, "srv.currentView", srv.currentView, "srv.log", srv.log)
@@ -318,13 +318,12 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 		srv.mu.Unlock()
 		reply.View = srv.currentView
 		reply.Success = false
-
         recoveryArgs := &RecoveryArgs{
-            View : args.View,
-            Server: srv.me}
+                View : args.View,
+                Server: srv.me}
         recoveryReply := &RecoveryReply{}
 
-        ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
+        ok := srv.peers[GetPrimary(args.View, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
 
         if ok {
             if recoveryReply.Success {
@@ -334,7 +333,8 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
                 copy(srv.log, recoveryReply.Entries)
                 srv.commitIndex = recoveryReply.PrimaryCommit
                 srv.status = NORMAL
-                fmt.Println("Prepare srv.me", srv.me, "Successful Recovery", srv.log, "commitIndex", srv.commitIndex)
+                fmt.Println("Prepare srv.me", srv.me, "Successful Recovery due to old view", srv.log, "commitIndex", srv.commitIndex)
+                //srv.mu.Unlock()
             }
         }
         return
@@ -372,23 +372,25 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
             reply.View = srv.currentView
             reply.Success = false
 
-            recoveryArgs := &RecoveryArgs{
-                View : args.View,
-                Server: srv.me}
-            recoveryReply := &RecoveryReply{}
-            ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
-			//srv.mu.Lock()
-            if ok {
-                if recoveryReply.Success {
-                    srv.mu.Lock()
-                    srv.currentView = recoveryReply.View
-                    srv.log = make([]interface{}, len(recoveryReply.Entries))
-                    copy(srv.log, recoveryReply.Entries)
-                    srv.commitIndex = recoveryReply.PrimaryCommit
-                    srv.status = NORMAL
-                    fmt.Println("Prepare srv.me", srv.me, "TOUT: Successful Recovery", srv.log, "commitIndex", srv.commitIndex)
-                }
-			}
+            //go func() {
+                recoveryArgs := &RecoveryArgs{
+                    View : args.View,
+                    Server: srv.me}
+                recoveryReply := &RecoveryReply{}
+                ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
+			    //srv.mu.Lock()
+                if ok {
+                    if recoveryReply.Success {
+                        srv.mu.Lock()
+                        srv.currentView = recoveryReply.View
+                        srv.log = make([]interface{}, len(recoveryReply.Entries))
+                        copy(srv.log, recoveryReply.Entries)
+                        srv.commitIndex = recoveryReply.PrimaryCommit
+                        srv.status = NORMAL
+                        fmt.Println("Prepare srv.me", srv.me, "TOUT: Successful Recovery", srv.log, "commitIndex", srv.commitIndex)
+                    }
+			    }
+            //} ()
 			return
         }
     } else {// if len(srv.log) == arg.Index {
@@ -459,12 +461,13 @@ func (srv *PBServer) PromptViewChange(newView int) {
 		View: newView,
 	}
 	vcReplyChan := make(chan *ViewChangeReply, len(srv.peers))
+    fmt.Println("Initiating View Change on srv", srv.me, " for view", newView)
 	// send ViewChange to all servers including myself
 	for i := 0; i < len(srv.peers); i++ {
 		go func(server int) {
 			var reply ViewChangeReply
 			ok := srv.peers[server].Call("PBServer.ViewChange", vcArgs, &reply)
-			//fmt.Printf("node-%d (nReplies %d) received reply ok=%v reply=%v\n", srv.me, nReplies, ok, r.reply)
+			fmt.Printf("node-%d received reply ok=%v reply=%v\n", srv.me, ok, reply)
 			if ok {
 				vcReplyChan <- &reply
 			} else {
@@ -500,7 +503,7 @@ func (srv *PBServer) PromptViewChange(newView int) {
 		for i := 0; i < len(srv.peers); i++ {
 			var reply StartViewReply
 			go func(server int) {
-				// fmt.Printf("node-%d sending StartView v=%d to node-%d\n", srv.me, svArgs.View, server)
+				fmt.Printf("node-%d sending StartView v=%d to node-%d\n", srv.me, svArgs.View, server)
 				srv.peers[server].Call("PBServer.StartView", svArgs, &reply)
 			}(i)
 		}
@@ -511,18 +514,125 @@ func (srv *PBServer) PromptViewChange(newView int) {
 // the collection of replies for successful ViewChange requests.
 // if a quorum of successful replies exist, then ok is set to true.
 // otherwise, ok = false.
+// To maintain this invariant, the primary chooses the log among the majority of successful replies using this rule: it picks the log whose lastest normal view number is the largest. If there are more than one such logs, it picks the longest log among those
 func (srv *PBServer) determineNewViewLog(successReplies []*ViewChangeReply) (
 	ok bool, newViewLog []interface{}) {
 	// Your code here
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+    //may not be needed
+	majority := len(srv.peers) / 2 + 1
+	if len(successReplies) < majority {
+		return false, newViewLog
+	}
+
+	largestLastNormView := -1
+
+    //fmt.Println("determineNewViewLog in srv: ", srv.me, "successReplies", successReplies)
+
+    var l_idx int
+	for i,r:= range successReplies {
+		if r.LastNormalView > largestLastNormView {
+			largestLastNormView = r.LastNormalView
+            l_idx = i
+		}
+	}
+
+	fmt.Println("determineNewViewlog in srv:", srv.me, "Chosing largest LastNormalView as:", largestLastNormView)
+
+	if largestLastNormView < 0 {
+		return false, newViewLog
+	}
+
+	largestLogIdx := l_idx
+	for i, r:= range successReplies {
+		if r.LastNormalView == largestLastNormView {
+			if len(successReplies[largestLogIdx].Log) < len(r.Log) {
+				largestLogIdx = i
+			}
+		}
+	}
+
+	fmt.Println("determineNewViewLog in srv:", srv.me, "Chosing largest log as", successReplies[largestLogIdx].Log)
+
+    newViewLog = make([]interface{}, len(successReplies[largestLogIdx].Log))
+    copy(newViewLog, successReplies[largestLogIdx].Log)
+
+	ok = true
 	return ok, newViewLog
 }
 
 // ViewChange is the RPC handler to process ViewChange RPC.
 func (srv *PBServer) ViewChange(args *ViewChangeArgs, reply *ViewChangeReply) {
 	// Your code here
+    //For replica, old primary and new primary check if args.view > srv.view
+    srv.mu.Lock()
+    defer srv.mu.Unlock()
+    fmt.Println("ViewChange Request on server", srv.me, "srv.status", srv.status, "args.View", args.View, "srv.currentView", srv.currentView)
+
+    if args.View <= srv.currentView {
+        fmt.Println("ViewChange: Newer view on server", srv.me)
+        reply.Success = false;
+        return
+    } /*else if srv.status != NORMAL {
+        fmt.Println("ViewChange: Server not NORMAL. Waiting.", srv.me)
+
+        pollInt := 1*time.Millisecond
+        srv.mu.Unlock()
+
+        t0 := time.Now()
+        for time.Since(t0).Seconds() < 1 {
+            if(srv.status == NORMAL) {
+                break
+            }
+            time.Sleep(pollInt)
+        }
+
+		srv.mu.Lock()
+		if srv.status != NORMAL {
+			fmt.Println("ViewChange: Server", srv.me, "did not become NORMAL even after waiting")
+			reply.Success = false
+			return
+		}
+	}*/
+
+    //set new view
+    lastNormView := srv.currentView
+//    srv.currentView = args.View
+	//set server's lastNormalView
+	srv.lastNormalView = lastNormView
+    //modify status to view change
+    srv.status = VIEWCHANGE
+    //reply success=true along with srv.log
+    reply.Log = make([]interface{}, len(srv.log))
+    copy(reply.Log, srv.log)
+    reply.LastNormalView = lastNormView
+    reply.Success = true
+	fmt.Println("ViewChange on srv: ", srv.me, "Sending back reply ", reply)
+	return
 }
 
 // StartView is the RPC handler to process StartView RPC.
 func (srv *PBServer) StartView(args *StartViewArgs, reply *StartViewReply) {
 	// Your code here
+    srv.mu.Lock()
+    defer srv.mu.Unlock()
+	//check whether status is VIEWCHANGE
+	//check whether srv.view <= args.View
+//    if srv.status != VIEWCHANGE {
+//        return
+//    } else 
+	if srv.currentView > args.View {
+        return
+    }
+	//change status to NORMAL
+	srv.status = NORMAL
+	//set new view
+	srv.currentView = args.View
+	//No need to set last normal view. that is set in ViewChange
+	//set log from args
+    srv.log = make([]interface{}, len(args.Log))
+    copy(srv.log, args.Log)
+	fmt.Println("StartView on srv:", srv.me, "srv.currentView", srv.currentView, "srv.lastNormalView", srv.lastNormalView, "srv.log", srv.log)
+	return
 }
