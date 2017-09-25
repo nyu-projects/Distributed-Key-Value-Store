@@ -224,7 +224,7 @@ func (cfg *config) checkCommittedIndex(index int, command interface{}, expectedS
 			}
 		}
 	}
-	if nReplicated != expectedServers {
+	if nReplicated < expectedServers {
 		cfg.t.Fatalf("command %v replicated to %d servers, expected replication to %d servers\n", command, nReplicated, expectedServers)
 	}
 }
@@ -282,5 +282,5 @@ func (cfg *config) viewChange(newView int) {
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
-	cfg.t.Fatal("timed out waiting for view %d change to complete at node-%d\n", newView, primary)
+	cfg.t.Fatalf("timed out waiting for view %d change to complete at node-%d\n", newView, primary)
 }
