@@ -178,7 +178,7 @@ func (srv *PBServer) Start(command interface{}) (
     //commitIndex := srv.commitIndex
     ok = true
 	//c := make(chan *PrepareReply)
-	var wg sync.WaitGroup
+	//var wg sync.WaitGroup
     args := &PrepareArgs{
                     View: view,
                     PrimaryCommit : srv.commitIndex,
@@ -186,66 +186,47 @@ func (srv *PBServer) Start(command interface{}) (
                     Entry: command}
 
 	//Current server is the primary one
-    //go func (currView int, currCommitIdx int, currLogLen int, currCommand interface{}) {
-	//go func () {
-        //Send Prepare to all the replicas
-        //c := make(chan *PrepareReply)
-	wg.Add(len(srv.peers)-1)
-	numCorrectReplys := 0
+
 	go func(){
-   	 	for idx := 0; idx < len(srv.peers); idx++ {
-            if idx != srv.me {
-//                args := &PrepareArgs{
-//                    View: currView,
-//                    PrimaryCommit: currCommitIdx,
-//                    Index: currLogLen,
-//                    Entry: currCommand}
+        pollInt := 2*time.Millisecond
+        t0 := time.Now()
 
-                reply := &PrepareReply{};
+        for time.Since(t0).Seconds() < 5 {
+            numCorrectReplys := 0
+			var wg sync.WaitGroup
+			wg.Add(len(srv.peers)-1)
+   	     	for idx := 0; idx < len(srv.peers); idx++ {
+                if idx != srv.me {
+                    reply := &PrepareReply{};
+                    //Starting a new thread to send Prepare RPC to server idx 
+                    fmt.Println("Primary srv.me", srv.me, "sending to idx", idx, "args", args)
 
-                //Starting a new thread to send Prepare RPC to server idx 
-                fmt.Println("Primary srv.me", srv.me, "sending to idx", idx, "args", args)
-                //go srv.sendPrepare(idx, args, reply, c)
+    				go func (idx int, args *PrepareArgs, reply *PrepareReply) {
+        				ok := srv.peers[idx].Call("PBServer.Prepare", args, reply)
+    	    			if !ok {
+        		    		reply.Success = false
+    				    }
+			    		if reply.Success {
+				    		numCorrectReplys += 1
+					    }
+						wg.Done()
+	    			}(idx, args, reply)
+                }
+        	}
+            //Collect all the PrepareReplys
 
-				go func (idx int, args *PrepareArgs, reply *PrepareReply) {
-    				ok := srv.peers[idx].Call("PBServer.Prepare", args, reply)
-    				if !ok {
-        				//Create a failed reply
-        				reply.Success = false
-    				}
-    				//fmt.Println("reply", reply)
-    				//c <- reply
-					wg.Done()
-					if reply.Success {	
-						numCorrectReplys += 1
-					}
-    				//return
-				}(idx, args, reply)
-            }
-    	}
-        //Collect all the PrepareReplys
-
-	//go func () {
-        //numCorrectReplys := 0
-		//numReplys := 0
-        //for numReplys < len(srv.peers)-1 {
-        //    reply := <-c
-        //    if reply.Success {
-        //        numCorrectReplys += 1
-        //    }
-		//	numReplys += 1
-        //}
-        //fmt.Println("Primary: numReplys", numReplys, "numCorrectReplys", numCorrectReplys)
-        //Update index view and ok
-		wg.Wait()
-		if numCorrectReplys >= len(srv.peers) / 2 {
-            srv.mu.Lock()
-            if srv.commitIndex < args.Index {
-    			srv.commitIndex = args.Index
-            }
-            srv.mu.Unlock()
-            fmt.Println("Primary: srv.me", srv.me, "updating commitIndex to", srv.commitIndex)
-		}
+    		wg.Wait()
+	    	if numCorrectReplys >= len(srv.peers) / 2 {
+                srv.mu.Lock()
+                if srv.commitIndex < args.Index {
+    		    	srv.commitIndex = args.Index
+                }
+                srv.mu.Unlock()
+                fmt.Println("Primary: srv.me", srv.me, "updating commitIndex to", srv.commitIndex)
+                break
+		    }
+			time.Sleep(pollInt)
+        }
         fmt.Println("Primary: srv.me", srv.me, "srv.commitIndex", srv.commitIndex, "srv.log", srv.log)
     } () //(srv.currentView, srv.commitIndex, len(srv.log)-1, command)
 
@@ -315,28 +296,30 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
         //Recovery
         fmt.Println("Prepare srv.me", srv.me, "Recovery due to old view")
         srv.status = RECOVERING
-		srv.mu.Unlock()
 		reply.View = srv.currentView
 		reply.Success = false
+
         recoveryArgs := &RecoveryArgs{
-                View : args.View,
-                Server: srv.me}
-        recoveryReply := &RecoveryReply{}
+    	            View : args.View,
+        	        Server: srv.me}
+		go func(){
+	        recoveryReply := &RecoveryReply{}
 
-        ok := srv.peers[GetPrimary(args.View, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
+        	ok := srv.peers[GetPrimary(args.View, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
 
-        if ok {
-            if recoveryReply.Success {
-		        srv.mu.Lock()
-                srv.currentView = recoveryReply.View
-                srv.log = make([]interface{}, len(recoveryReply.Entries))
-                copy(srv.log, recoveryReply.Entries)
-                srv.commitIndex = recoveryReply.PrimaryCommit
-                srv.status = NORMAL
-                fmt.Println("Prepare srv.me", srv.me, "Successful Recovery due to old view", srv.log, "commitIndex", srv.commitIndex)
-                //srv.mu.Unlock()
-            }
-        }
+			srv.mu.Lock()
+    	    if ok {
+ 	           if recoveryReply.Success {
+                	srv.currentView = recoveryReply.View
+                	srv.log = make([]interface{}, len(recoveryReply.Entries))
+                	copy(srv.log, recoveryReply.Entries)
+                	srv.commitIndex = recoveryReply.PrimaryCommit
+                	srv.status = NORMAL
+                	fmt.Println("Prepare srv.me", srv.me, "Successful Recovery due to old view", srv.log, "commitIndex", srv.commitIndex)
+           		}
+        	}
+			srv.mu.Unlock()
+		}()
         return
 	} else if len(srv.log) < args.Index {
         fmt.Println("Prepare srv.me", srv.me ,"waiting for correct index log to appear")
@@ -354,34 +337,36 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
             time.Sleep(pollInt)
         }
 
+		srv.mu.Lock()
         if(len(srv.log) == args.Index) {
-            //Correct Index Found
-            srv.mu.Lock()
+            //Correct Index Found 
             srv.log = append(srv.log, args.Entry)
             srv.commitIndex = args.PrimaryCommit
             reply.View = srv.currentView
             reply.Success = true
             fmt.Println("Prepare srv.me", srv.me, "correct index found.", srv.log, "commitIndex", srv.commitIndex)
             return
-        }else {// if (srv.status != RECOVERING){
+        } else {// if (srv.status != RECOVERING){
             //Timeout & Recovery
             fmt.Println("Prepare srv.me", srv.me, "TOUT while waiting for index update. recovery called")
-			//srv.mu.Lock()
+
             srv.status = RECOVERING
-			//srv.mu.Unlock()
+
             reply.View = srv.currentView
             reply.Success = false
 
-            //go func() {
-                recoveryArgs := &RecoveryArgs{
+            recoveryArgs := &RecoveryArgs{
                     View : args.View,
                     Server: srv.me}
-                recoveryReply := &RecoveryReply{}
-                ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
-			    //srv.mu.Lock()
-                if ok {
+
+			go func() {
+	            recoveryReply := &RecoveryReply{}
+
+	            ok := srv.peers[GetPrimary(srv.currentView, len(srv.peers))].Call("PBServer.Recovery", recoveryArgs, recoveryReply)
+
+				srv.mu.Lock()
+            	if ok {
                     if recoveryReply.Success {
-                        srv.mu.Lock()
                         srv.currentView = recoveryReply.View
                         srv.log = make([]interface{}, len(recoveryReply.Entries))
                         copy(srv.log, recoveryReply.Entries)
@@ -389,11 +374,12 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
                         srv.status = NORMAL
                         fmt.Println("Prepare srv.me", srv.me, "TOUT: Successful Recovery", srv.log, "commitIndex", srv.commitIndex)
                     }
-			    }
-            //} ()
+		    	}
+				srv.mu.Unlock()
+			}()
 			return
         }
-    } else {// if len(srv.log) == arg.Index {
+    } else if len(srv.log) == args.Index {
         //Current server is backup and args' view and message index are fine
 	    srv.log = append(srv.log, args.Entry)
 	    srv.commitIndex = args.PrimaryCommit
@@ -401,13 +387,21 @@ func (srv *PBServer) Prepare(args *PrepareArgs, reply *PrepareReply) {
 	    reply.Success = true
         fmt.Println("Prepare srv.me", srv.me, "Normal Op", srv.log, "commitIndex", srv.commitIndex)
         return
+    } else {
+        //Current server is backup and already has arg message
+        //Just sending ack in this case
+        if args.Entry == srv.log[args.Index] {
+            //args.PrimaryCommit
+            reply.View = srv.currentView
+            reply.Success = true
+            fmt.Println("Prepare srv", srv.me, "Sent ack to Primary for log index", args.Index)
+            return
+        }
+        reply.View = srv.currentView
+        reply.Success = false
+        fmt.Println("Prepare srv", srv.me, "Primary and backup differ on log index", args.Index)
+        return
     }
-//    else {
-//        srv.commitIndex = args.PrimaryCommit
-//        reply.View = srv.currentView
-//        reply.Success = true
-//        fmt.Println("Prepare srv.me", srv.me, "Updated backup commit idx", srv.log, "commitIndex", srv.commitIndex)
-//    }
 }
 
 func checkIndex(srvloglen int, argsIdx int, endSignal chan bool) {
