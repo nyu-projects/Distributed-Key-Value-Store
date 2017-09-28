@@ -192,30 +192,42 @@ func (srv *PBServer) Start(command interface{}) (
         t0 := time.Now()
 
         for time.Since(t0).Seconds() < 5 {
-            numCorrectReplys := 0
-			var wg sync.WaitGroup
-			wg.Add(len(srv.peers)-1)
+            //numCorrectReplys := 0
+			//var wg sync.WaitGroup
+			//wg.Add(len(srv.peers)-1)
+            c := make(chan *PrepareReply)
    	     	for idx := 0; idx < len(srv.peers); idx++ {
                 if idx != srv.me {
                     reply := &PrepareReply{};
                     //Starting a new thread to send Prepare RPC to server idx 
                     //fmt.Println("Primary srv.me", srv.me, "sending to idx", idx, "args", args)
 
-    				go func (idx int, args *PrepareArgs, reply *PrepareReply) {
+    				go func (idx int, args *PrepareArgs, reply *PrepareReply, c chan *PrepareReply) {
         				ok := srv.peers[idx].Call("PBServer.Prepare", args, reply)
     	    			if !ok {
         		    		reply.Success = false
     				    }
-			    		if reply.Success {
-				    		numCorrectReplys += 1
-					    }
-						wg.Done()
-	    			}(idx, args, reply)
+                        c <- reply
+			    		//if reply.Success {
+				    	//	numCorrectReplys += 1
+					    //}
+						//wg.Done()
+	    			}(idx, args, reply, c)
                 }
         	}
             //Collect all the PrepareReplys
+    		//wg.Wait()
+            numCorrectReplys := 0
+            numReplys := 0
 
-    		wg.Wait()
+            for numReplys < len(srv.peers)-1 {
+                reply := <-c
+                if reply.Success {
+                    numCorrectReplys += 1
+                }
+                numReplys += 1
+            }
+
 	    	if numCorrectReplys >= len(srv.peers) / 2 {
                 srv.mu.Lock()
                 if srv.commitIndex < args.Index {
