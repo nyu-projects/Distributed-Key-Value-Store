@@ -151,9 +151,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         reply.Success     = true
         return
     } else if args.CandidatesTerm == rf.currentTerm {
-        if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
-            rf.status = FOLLOWER
-            rf.electionTimer = time.Now()
+        if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && (args.LastLogIndex == len(rf.log)-1 && args.LastLogTerm == rf.log[len(rf.log)-1].Term) {
+//            rf.status = FOLLOWER
+//            rf.electionTimer = time.Now()
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
             reply.Success = true
@@ -165,11 +165,15 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             return
         }
     } else {
-        if  args.LastLogIndex == len(rf.log)-1 && args.LastLogTerm == rf.log[len(rf.log)-1].Term {
-            rf.currentTerm = args.CandidatesTerm
+        rf.currentTerm = args.CandidatesTerm
+        rf.votedFor = -1
+        rf.status = FOLLOWER
+//        rf.electionTimer = time.Now()
+        if args.LastLogIndex == len(rf.log)-1 && args.LastLogTerm == rf.log[len(rf.log)-1].Term {
+//            rf.currentTerm = args.CandidatesTerm
             rf.votedFor    = args.CandidateId
             rf.electionTimer = time.Now()
-            rf.status = FOLLOWER
+//            rf.status = FOLLOWER
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
             reply.Success = true
@@ -177,7 +181,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         } else {
             reply.VoteGranted = false
             reply.Term = rf.currentTerm
-            reply.Success = false
+            reply.Success = true
             return
         }
     }
@@ -209,8 +213,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.LeadersTerm < rf.currentTerm {
 		reply.Term	  = rf.currentTerm
 		reply.Success = false
-	} else if args.LeadersTerm == rf.currentTerm {
-//        rf.status     = FOLLOWER
+	} else if args.PrevLogIndex > len(rf.log)-1 {
+        reply.Term    = rf.currentTerm
+        reply.Success = false
+    } else if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
+        reply.Term    = rf.currentTerm
+        reply.Success = false
+    } else if args.LeadersTerm == rf.currentTerm {
+        rf.status     = FOLLOWER
         rf.electionTimer = time.Now()
         reply.Term    = rf.currentTerm
         reply.Success = true
@@ -336,6 +346,8 @@ func (rf *Raft) ActAsLeader() {
     	    if reply.Success {
     	        numSuccessReceived += 1
 	        } else if reply.Term > rf.currentTerm {
+                rf.currentTerm = reply.Term
+                rf.votedFor    = -1
 				updateToFollower = true
 			}
 	        numRepliesReceived += 1
@@ -348,10 +360,16 @@ func (rf *Raft) ActAsLeader() {
 			rf.status = FOLLOWER
 			go rf.ActAsFollower()
             rf.mu.Unlock()
-			break
+			return
 		}
         time.Sleep(rf.heartbeatTimeout)
     }
+    rf.mu.Lock()
+    if rf.status == FOLLOWER {
+        go rf.ActAsFollower()
+    }
+    rf.mu.Unlock()
+
 	return
 }
 
@@ -375,7 +393,7 @@ func (rf *Raft) ActAsFollower() {
 			break
 		}
         rf.mu.Unlock()
-		time.Sleep(10*time.Millisecond)
+		time.Sleep(2*time.Millisecond)
 	}
 
     if triggerElection {
@@ -446,6 +464,8 @@ func (rf *Raft) ActAsCandidate() {
 		            if reply.VoteGranted {
     		            numVotesReceived += 1
 		            } else if reply.Term > rf.currentTerm  {    //Update to follower with term received in reply
+                        rf.currentTerm = reply.Term
+                        rf.votedFor    = -1
 	            	    updateToFollower = true
 	            	}
 	        	}
@@ -453,23 +473,24 @@ func (rf *Raft) ActAsCandidate() {
                 rf.mu.Unlock()
 	    	}
             //fmt.Println("Leader election on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
-		    if updateToFollower {
-                rf.mu.Lock()
-				rf.status = FOLLOWER
-		        go rf.ActAsFollower()
-                rf.mu.Unlock()
-				return
-		    } else {
-                rf.mu.Lock()
-                if numVotesReceived > len(rf.peers) / 2 {
-		            //Current server is leader
-				    rf.status = LEADER
-		            go rf.ActAsLeader()
+            rf.mu.Lock()
+            if rf.status == CANDIDATE {
+    		    if updateToFollower {
+		    		rf.status = FOLLOWER
+		            go rf.ActAsFollower()
                     rf.mu.Unlock()
 				    return
-                }
+    		    } else if numVotesReceived > len(rf.peers) / 2 {
+			    	rf.status = LEADER
+		            go rf.ActAsLeader()
+                    rf.mu.Unlock()
+	    			return
+                } else {
+                    rf.mu.Unlock()
+		        }
+            } else {
                 rf.mu.Unlock()
-		    }
+            }
 		} else{
            rf.mu.Unlock()
         }
