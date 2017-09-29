@@ -21,7 +21,7 @@ import "sync"
 import "labrpc"
 import "time"
 import "math/rand"
-
+//import "fmt"
 // import "bytes"
 // import "encoding/gob"
 
@@ -85,10 +85,10 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
-
+    rf.mu.Lock()
     term = rf.currentTerm
     isleader = (rf.status == LEADER)
-
+    rf.mu.Unlock()
 	return term, isleader
 }
 
@@ -141,6 +141,8 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+    //fmt.Println("Received RequestVote on srv ", rf.me, "Args", args)
+    //fmt.Println("RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", args.LastLogIndex, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
     rf.mu.Lock()
     defer rf.mu.Unlock()
     if args.CandidatesTerm < rf.currentTerm {
@@ -200,6 +202,7 @@ type AppendEntriesReply struct {
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
     // Your code here (2A, 2B).
+    //fmt.Println("Received AppendEntries on srv ", rf.me, "Args", args)
     rf.mu.Lock()
     defer rf.mu.Unlock()
 
@@ -207,9 +210,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term	  = rf.currentTerm
 		reply.Success = false
 	} else if args.LeadersTerm == rf.currentTerm {
+//        rf.status     = FOLLOWER
+        rf.electionTimer = time.Now()
         reply.Term    = rf.currentTerm
         reply.Success = true
     } else {
+        rf.electionTimer = time.Now()
 		rf.currentTerm  = args.LeadersTerm
         rf.votedFor     = -1
 		rf.status       = FOLLOWER
@@ -282,7 +288,14 @@ func (rf *Raft) Kill() {
 }
 
 func (rf *Raft) ActAsLeader() {
-    for rf.status == LEADER {
+    //fmt.Println("Leader srv", rf.me)
+    for {
+        rf.mu.Lock()
+        if rf.status != LEADER {
+            rf.mu.Unlock()
+            break
+        }
+
 		args := &AppendEntriesArgs {
     		LeadersTerm  : rf.currentTerm             ,
     		LeaderId     : rf.me        			  ,
@@ -296,34 +309,45 @@ func (rf *Raft) ActAsLeader() {
 	    //Send AppendEntry RPCs to everyone
     	for idx := 0; idx < len(rf.peers); idx++ {
         	reply := &AppendEntriesReply{}
-        	go func (server int, args *AppendEntriesArgs, reply *AppendEntriesReply, c chan *AppendEntriesReply) {
-            	if idx != rf.me {
+            if idx != rf.me {
+        	    go func (server int, args *AppendEntriesArgs, reply *AppendEntriesReply, c chan *AppendEntriesReply) {
                 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
                     if !ok {
 						reply.Term = -1      //Dummy term
                 	    reply.Success = false
                     }
                     c <- reply
-            	}
-        	}(idx, args, reply, c)
+        	    }(idx, args, reply, c)
+            }
     	}
-
+        rf.mu.Unlock()
 		numRepliesReceived := 1
 		numSuccessReceived := 1
         updateToFollower := false
-    	for numRepliesReceived < len(rf.peers)-1 {
+    	for {
+            rf.mu.Lock()
+            if(numRepliesReceived >= len(rf.peers)-1) {
+                rf.mu.Unlock()
+                break
+            }
+            rf.mu.Unlock()
 	        reply := <-c
+            rf.mu.Lock()
     	    if reply.Success {
     	        numSuccessReceived += 1
 	        } else if reply.Term > rf.currentTerm {
 				updateToFollower = true
 			}
 	        numRepliesReceived += 1
+            rf.mu.Unlock()
     	}
 
+        //fmt.Println("Leader Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
 		if updateToFollower {
+            rf.mu.Lock()
 			rf.status = FOLLOWER
 			go rf.ActAsFollower()
+            rf.mu.Unlock()
 			break
 		}
         time.Sleep(rf.heartbeatTimeout)
@@ -332,44 +356,49 @@ func (rf *Raft) ActAsLeader() {
 }
 
 func (rf *Raft) ActAsFollower() {
+    //fmt.Println("Follower srv ", rf.me)
+    rf.mu.Lock()
     rf.electionTimer = time.Now()
+    rf.mu.Unlock()
     var triggerElection bool = false
 	var elapsed time.Duration
-	for rf.status == FOLLOWER {
+	for {
+        rf.mu.Lock()
+        if rf.status != FOLLOWER {
+            rf.mu.Unlock()
+            break
+        }
 		elapsed = time.Since(rf.electionTimer)
 		if elapsed > rf.electionTimeout {
             triggerElection = true
+            rf.mu.Unlock()
 			break
 		}
+        rf.mu.Unlock()
 		time.Sleep(10*time.Millisecond)
 	}
 
     if triggerElection {
+        //fmt.Println("Follower Timeout on srv ", rf.me)
+        rf.mu.Lock()
 		rf.status = CANDIDATE
         go rf.ActAsCandidate()
+        rf.mu.Unlock()
     }
-
-/*
-    	for rf.status == CANDIDATE {
-			if elapsed > rf.electionTimeout {
-				rf.electionTimer = time.Now()
-	        	electionConclude := make(chan bool)
-        		go rf.ActAsCandidate(electionConclude)
-    		    reply := <-electionConclude
-		        if reply {
-            		break
-        		}
-			}
-    	    time.Sleep(10*time.Millisecond)
-			elapsed = time.Since(rf.electionTimer)
-	    }
-*/
 }
 
 func (rf *Raft) ActAsCandidate() {
-	for rf.status == CANDIDATE {
+    //fmt.Println("Candidate srv ", rf.me)
+	for {
+        rf.mu.Lock()
+        if rf.status != CANDIDATE {
+            rf.mu.Unlock()
+            break
+        }
 		elapsed := time.Since(rf.electionTimer)
+        ////fmt.Println("Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
 		if elapsed > rf.electionTimeout {
+//            rf.mu.Lock()
 		    //Increment current term
 		    rf.currentTerm += 1
 		    rf.votedFor = -1
@@ -390,20 +419,29 @@ func (rf *Raft) ActAsCandidate() {
 		    //Send Request Vote RPCs to everyone
 		    for idx := 0; idx < len(rf.peers); idx++ {
 		        reply := &RequestVoteReply{}
-		        go func (server int, args *RequestVoteArgs, reply *RequestVoteReply, c chan *RequestVoteReply) {
-	            	if idx != rf.me {
-	                	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-    	            	if !ok {
-        	            	reply.Success = false
-            	    	}
-                		c <- reply
-            		}
-	        	}(idx, args, reply, c)
+                //fmt.Println("Candidate srv ", rf.me, "Sending Request Vote", args, " to srv ", idx)
+                if idx != rf.me {
+    		        go func (server int, args *RequestVoteArgs, reply *RequestVoteReply, c chan *RequestVoteReply) {
+	                    	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+    	                	if !ok {
+        	                	reply.Success = false
+            	        	}
+                	    	c <- reply
+    	        	}(idx, args, reply, c)
+                }
     		}
 
+            rf.mu.Unlock()
 		    updateToFollower := false
-		    for numRepliesReceived < len(rf.peers) {
+		    for {
+                rf.mu.Lock()
+                if numRepliesReceived >= len(rf.peers)-1 {
+                    rf.mu.Unlock()
+                    break
+                }
+                rf.mu.Unlock()
 		        reply := <-c
+                rf.mu.Lock()
 		        if reply.Success {
 		            if reply.VoteGranted {
     		            numVotesReceived += 1
@@ -412,27 +450,39 @@ func (rf *Raft) ActAsCandidate() {
 	            	}
 	        	}
 	        	numRepliesReceived += 1
+                rf.mu.Unlock()
 	    	}
+            //fmt.Println("Leader election on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
 		    if updateToFollower {
-		        //rf.electionTimer = time.Now()
+                rf.mu.Lock()
 				rf.status = FOLLOWER
 		        go rf.ActAsFollower()
+                rf.mu.Unlock()
 				return
-		    } else if numVotesReceived > len(rf.peers) / 2 {
-		        //Current server is leader
-				rf.status = LEADER
-		        go rf.ActAsLeader()
-		        //fmt.Println("Primary: srv.me", srv.me, "updating commitIndex to", srv.commitIndex)
-				return
+		    } else {
+                rf.mu.Lock()
+                if numVotesReceived > len(rf.peers) / 2 {
+		            //Current server is leader
+				    rf.status = LEADER
+		            go rf.ActAsLeader()
+                    rf.mu.Unlock()
+				    return
+                }
+                rf.mu.Unlock()
 		    }
-		}
-
+		} else{
+           rf.mu.Unlock()
+        }
         time.Sleep(10*time.Millisecond)
+        rf.mu.Lock()
 		elapsed = time.Since(rf.electionTimer)
+        rf.mu.Unlock()
 	}
+    rf.mu.Lock()
 	if rf.status == FOLLOWER {
 		go rf.ActAsFollower()
 	}
+    rf.mu.Unlock()
 	return
 }
 
@@ -474,6 +524,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
     rf.heartbeatTimeout = 100 * time.Millisecond
 
     rf.status = FOLLOWER
+    //fmt.Println("Starting server", "me", rf.me, "log", rf.log, "electionTout", rf.electionTimeout, "heartbeatTout", rf.heartbeatTimeout, "status", rf.status)
     go rf.ActAsFollower()
 
 	return rf
