@@ -74,9 +74,9 @@ type Raft struct {
     //extra volatile stuff needed
     status              int             //server's current state, Follower, Candidate, Leader
 	leaderId		    int				//leader's id stored in each server
-    electionTimeout     time.Time       //election timeout limit for current server
+    electionTimeout     time.Duration   //election timeout limit for current server
     electionTimer       time.Time       //election timer for current server
-    heartbeatTimeout    time.Time       //leader sends messages spaced by heartbeat timeout
+    heartbeatTimeout    time.Duration   //leader sends messages spaced by heartbeat timeout
 }
 
 // return currentTerm and whether this server
@@ -150,6 +150,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         return
     } else if args.CandidatesTerm == rf.currentTerm {
         if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
+            rf.status = FOLLOWER
+            rf.electionTimer = time.Now()
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
             reply.Success = true
@@ -164,6 +166,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         if  args.LastLogIndex == len(rf.log)-1 && args.LastLogTerm == rf.log[len(rf.log)-1].Term {
             rf.currentTerm = args.CandidatesTerm
             rf.votedFor    = args.CandidateId
+            rf.electionTimer = time.Now()
+            rf.status = FOLLOWER
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
             reply.Success = true
@@ -266,8 +270,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
-
-
 	return index, term, isLeader
 }
 
@@ -281,7 +283,6 @@ func (rf *Raft) Kill() {
 
 func (rf *Raft) ActAsLeader() {
     for rf.status == LEADER {
-        AppendConclude := make(chan int)
 		args := &AppendEntriesArgs {
     		LeadersTerm  : rf.currentTerm             ,
     		LeaderId     : rf.me        			  ,
@@ -297,8 +298,12 @@ func (rf *Raft) ActAsLeader() {
         	reply := &AppendEntriesReply{}
         	go func (server int, args *AppendEntriesArgs, reply *AppendEntriesReply, c chan *AppendEntriesReply) {
             	if idx != rf.me {
-                	ok := rf.peers[server].Call("Raft.AppendEntry", args, reply)
-                	c <- reply
+                	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+                    if !ok {
+						reply.Term = -1      //Dummy term
+                	    reply.Success = false
+                    }
+                    c <- reply
             	}
         	}(idx, args, reply, c)
     	}
@@ -318,15 +323,18 @@ func (rf *Raft) ActAsLeader() {
 
 		if updateToFollower {
 			rf.status = FOLLOWER
+			go rf.ActAsFollower()
 			break
 		}
         time.Sleep(rf.heartbeatTimeout)
     }
+	return
 }
 
 func (rf *Raft) ActAsFollower() {
+    rf.electionTimer = time.Now()
     var triggerElection bool = false
-	var elapsed time.Time
+	var elapsed time.Duration
 	for rf.status == FOLLOWER {
 		elapsed = time.Since(rf.electionTimer)
 		if elapsed > rf.electionTimeout {
@@ -338,11 +346,15 @@ func (rf *Raft) ActAsFollower() {
 
     if triggerElection {
 		rf.status = CANDIDATE
+        go rf.ActAsCandidate()
+    }
+
+/*
     	for rf.status == CANDIDATE {
 			if elapsed > rf.electionTimeout {
 				rf.electionTimer = time.Now()
-	        	electionConclude := make(chan int)
-        		go ActAsCandidate(electionConclude)
+	        	electionConclude := make(chan bool)
+        		go rf.ActAsCandidate(electionConclude)
     		    reply := <-electionConclude
 		        if reply {
             		break
@@ -351,78 +363,78 @@ func (rf *Raft) ActAsFollower() {
     	    time.Sleep(10*time.Millisecond)
 			elapsed = time.Since(rf.electionTimer)
 	    }
-    }
-}
-
-func (rf *Raft) ActAsCandidate(electionConclude chan int) {
-    //Increment current term
-    rf.currentTerm += 1
-    rf.votedFor = -1
-
-    //Vote for self
-	numRepliesReceived := 1
-    numVotesReceived := 1
-    rf.votedFor = rf.me
-
-    //Reset election timer
-    rf.electionTimer = time.Now()
-    args := &RequestVoteArgs{
-    	CandidatesTerm : rf.currentTerm,
-    	CandidateId    : rf.me         ,
-    	LastLogIndex   : len(rf.log)-1 ,
-    	LastLogTerm    : rf.log[len(rf.log)-1].Term}
-    c := make(chan *RequestVoteReply)
-    //Send Request Vote RPCs to everyone
-    for idx := 0; idx < len(rf.peers); idx++ {
-        reply := &RequestVoteReply{}
-        go func (server int, args *RequestVoteArgs, reply *RequestVoteReply, c chan *RequestVoteReply) {
-            if idx != rf.me {
-                ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-                c <- reply
-            }
-        }(idx, args, reply, c)
-    }
-
-	updateToFollower := false
-    for numRepliesReceived < len(rf.peers) {
-        reply := <-c
-        if reply.Success {
-			if reply.VoteGranted {
-				numVotesReceived += 1
-			} else if reply.Term > rf.currentTerm  {	//Update to follower with term received in reply
-				updateToFollower = true
-			}
-        }
-        numRepliesReceived += 1
-    }
-
-	if updateToFollower {
-		go ActAsFollower()
-		electionConclude <- true
-	} else if numVotesReceived > len(rf.peers) / 2 {
-		//Current server is leader
-		go ActAsLeader()
-        //fmt.Println("Primary: srv.me", srv.me, "updating commitIndex to", srv.commitIndex)
-		electionConclude <- true
-    } else {
-		electionConclude <- false
-	}
-}
-
-/*
-func KickoffLeaderElection(){
-    for rf.status == CANDIDATE {
-        electionConclude chan int
-        go ActAsCandidate(electionConclude)
-        reply := <-electionConclude
-        if reply {
-            break
-        }
-        time.Sleep()
-    }
-    return
-}
 */
+}
+
+func (rf *Raft) ActAsCandidate() {
+	for rf.status == CANDIDATE {
+		elapsed := time.Since(rf.electionTimer)
+		if elapsed > rf.electionTimeout {
+		    //Increment current term
+		    rf.currentTerm += 1
+		    rf.votedFor = -1
+
+		    //Vote for self
+		    numRepliesReceived := 1
+		    numVotesReceived := 1
+		    rf.votedFor = rf.me
+
+		    //Reset election timer
+		    rf.electionTimer = time.Now()
+		    args := &RequestVoteArgs{
+		        CandidatesTerm : rf.currentTerm,
+        		CandidateId    : rf.me         ,
+    		    LastLogIndex   : len(rf.log)-1 ,
+	        	LastLogTerm    : rf.log[len(rf.log)-1].Term}
+		    c := make(chan *RequestVoteReply)
+		    //Send Request Vote RPCs to everyone
+		    for idx := 0; idx < len(rf.peers); idx++ {
+		        reply := &RequestVoteReply{}
+		        go func (server int, args *RequestVoteArgs, reply *RequestVoteReply, c chan *RequestVoteReply) {
+	            	if idx != rf.me {
+	                	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+    	            	if !ok {
+        	            	reply.Success = false
+            	    	}
+                		c <- reply
+            		}
+	        	}(idx, args, reply, c)
+    		}
+
+		    updateToFollower := false
+		    for numRepliesReceived < len(rf.peers) {
+		        reply := <-c
+		        if reply.Success {
+		            if reply.VoteGranted {
+    		            numVotesReceived += 1
+		            } else if reply.Term > rf.currentTerm  {    //Update to follower with term received in reply
+	            	    updateToFollower = true
+	            	}
+	        	}
+	        	numRepliesReceived += 1
+	    	}
+		    if updateToFollower {
+		        //rf.electionTimer = time.Now()
+				rf.status = FOLLOWER
+		        go rf.ActAsFollower()
+				return
+		    } else if numVotesReceived > len(rf.peers) / 2 {
+		        //Current server is leader
+				rf.status = LEADER
+		        go rf.ActAsLeader()
+		        //fmt.Println("Primary: srv.me", srv.me, "updating commitIndex to", srv.commitIndex)
+				return
+		    }
+		}
+
+        time.Sleep(10*time.Millisecond)
+		elapsed = time.Since(rf.electionTimer)
+	}
+	if rf.status == FOLLOWER {
+		go rf.ActAsFollower()
+	}
+	return
+}
 
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
@@ -447,15 +459,22 @@ func Make(peers []*labrpc.ClientEnd, me int,
     rf.votedFor    = -1
 
 	// initialize from state persisted before a crash
-	//rf.readPersist(persister.ReadRaftState())
+	// rf.readPersist(persister.ReadRaftState())
+
+    var v interface{}
+    lg := LogEntry{
+		Term : 0,
+		Log  : v}
+    rf.log = append(rf.log, lg)
+
     s := rand.NewSource(time.Now().UnixNano())
     r := rand.New(s)
-    tout := r.intn(900) + 100
-    rf.electionTimeout = (tout)*time.Millisecond
-    rf.electionTimer   = time.Now()
+    tout := time.Duration(r.Intn(400) + 500)
+    rf.electionTimeout = tout * time.Millisecond
     rf.heartbeatTimeout = 100 * time.Millisecond
+
     rf.status = FOLLOWER
-    go ActAsFollower()
+    go rf.ActAsFollower()
 
 	return rf
 }
