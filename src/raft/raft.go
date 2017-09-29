@@ -21,7 +21,7 @@ import "sync"
 import "labrpc"
 import "time"
 import "math/rand"
-//import "fmt"
+import "fmt"
 // import "bytes"
 // import "encoding/gob"
 
@@ -143,8 +143,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
     rf.mu.Lock()
     defer rf.mu.Unlock()
-    //fmt.Println("Received RequestVote on srv ", rf.me, "Args", args)
-    //fmt.Println("RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", args.LastLogIndex, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
+    fmt.Println("Received RequestVote on srv ", rf.me, "Args", args)
+    fmt.Println("RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", args.LastLogIndex, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
 
     if args.CandidatesTerm < rf.currentTerm {
         reply.VoteGranted = false
@@ -209,7 +209,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
     // Your code here (2A, 2B). 
     rf.mu.Lock()
     defer rf.mu.Unlock()
-    //fmt.Println("Received AppendEntries on srv ", rf.me, "Args", args)
+    fmt.Println("Received AppendEntries on srv ", rf.me, "Args", args)
 	if args.LeadersTerm < rf.currentTerm {
 		reply.Term	  = rf.currentTerm
 		reply.Success = false
@@ -298,7 +298,7 @@ func (rf *Raft) Kill() {
 }
 
 func (rf *Raft) ActAsLeader() {
-    //fmt.Println("Leader srv", rf.me)
+    fmt.Println("Leader srv", rf.me)
     for {
         rf.mu.Lock()
         if rf.status != LEADER {
@@ -350,7 +350,7 @@ func (rf *Raft) ActAsLeader() {
                 rf.mu.Unlock()
         	}
 
-            //fmt.Println("Leader Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
+            fmt.Println("Leader Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
 
 	    	if updateToFollower {
                 rf.mu.Lock()
@@ -372,7 +372,7 @@ func (rf *Raft) ActAsLeader() {
 }
 
 func (rf *Raft) ActAsFollower() {
-    //fmt.Println("Follower srv ", rf.me)
+    fmt.Println("Follower srv ", rf.me)
     rf.mu.Lock()
     rf.electionTimer = time.Now()
     rf.mu.Unlock()
@@ -395,7 +395,7 @@ func (rf *Raft) ActAsFollower() {
 	}
 
     if triggerElection {
-        //fmt.Println("Follower Timeout on srv ", rf.me)
+        fmt.Println("Follower Timeout on srv ", rf.me)
         rf.mu.Lock()
 		rf.status = CANDIDATE
         go rf.ActAsCandidate()
@@ -404,7 +404,7 @@ func (rf *Raft) ActAsFollower() {
 }
 
 func (rf *Raft) ActAsCandidate() {
-    //fmt.Println("Candidate srv ", rf.me)
+    fmt.Println("Candidate srv ", rf.me)
 	for {
         rf.mu.Lock()
         if rf.status != CANDIDATE {
@@ -413,7 +413,7 @@ func (rf *Raft) ActAsCandidate() {
         }
 		elapsed := time.Since(rf.electionTimer)
         rf.mu.Unlock()
-        //////fmt.Println("Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
+        ////fmt.Println("Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
 		if elapsed > rf.electionTimeout {
             rf.mu.Lock()
 		    //Increment current term
@@ -434,7 +434,7 @@ func (rf *Raft) ActAsCandidate() {
 		    //Send Request Vote RPCs to everyone
 		    for idx := 0; idx < len(rf.peers); idx++ {
 		        reply := &RequestVoteReply{}
-                //fmt.Println("Candidate srv ", rf.me, "Sending Request Vote", args, " to srv ", idx)
+                fmt.Println("Candidate srv ", rf.me, "Sending Request Vote", args, " to srv ", idx)
                 if idx != rf.me {
     		        go func (server int, args *RequestVoteArgs, reply *RequestVoteReply, c chan *RequestVoteReply) {
 	                    	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
@@ -467,7 +467,7 @@ func (rf *Raft) ActAsCandidate() {
     	        	numRepliesReceived += 1
                     rf.mu.Unlock()
     	    	}
-                //fmt.Println("Leader election on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
+                fmt.Println("Leader election on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
                 rf.mu.Lock()
                 if rf.status == CANDIDATE {
         		    if updateToFollower {
@@ -534,7 +534,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
     rf.heartbeatTimeout = 100 * time.Millisecond
 
     rf.status = FOLLOWER
-    //fmt.Println("Starting server", "me", rf.me, "log", rf.log, "electionTout", rf.electionTimeout, "heartbeatTout", rf.heartbeatTimeout, "status", rf.status)
+    fmt.Println("Starting server", "me", rf.me, "log", rf.log, "electionTout", rf.electionTimeout, "heartbeatTout", rf.heartbeatTimeout, "status", rf.status)
     go rf.ActAsFollower()
 
 	return rf
