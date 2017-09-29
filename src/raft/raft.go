@@ -141,10 +141,11 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-    //fmt.Println("Received RequestVote on srv ", rf.me, "Args", args)
-    //fmt.Println("RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", args.LastLogIndex, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
     rf.mu.Lock()
     defer rf.mu.Unlock()
+    //fmt.Println("Received RequestVote on srv ", rf.me, "Args", args)
+    //fmt.Println("RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", args.LastLogIndex, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
+
     if args.CandidatesTerm < rf.currentTerm {
         reply.VoteGranted = false
         reply.Term        = rf.currentTerm
@@ -205,11 +206,10 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-    // Your code here (2A, 2B).
-    //fmt.Println("Received AppendEntries on srv ", rf.me, "Args", args)
+    // Your code here (2A, 2B). 
     rf.mu.Lock()
     defer rf.mu.Unlock()
-
+    //fmt.Println("Received AppendEntries on srv ", rf.me, "Args", args)
 	if args.LeadersTerm < rf.currentTerm {
 		reply.Term	  = rf.currentTerm
 		reply.Success = false
@@ -331,37 +331,35 @@ func (rf *Raft) ActAsLeader() {
             }
     	}
         rf.mu.Unlock()
-		numRepliesReceived := 1
-		numSuccessReceived := 1
-        updateToFollower := false
-    	for {
-            rf.mu.Lock()
-            if(numRepliesReceived >= len(rf.peers)-1) {
-                rf.mu.Unlock()
-                break
-            }
-            rf.mu.Unlock()
-	        reply := <-c
-            rf.mu.Lock()
-    	    if reply.Success {
-    	        numSuccessReceived += 1
-	        } else if reply.Term > rf.currentTerm {
-                rf.currentTerm = reply.Term
-                rf.votedFor    = -1
-				updateToFollower = true
-			}
-	        numRepliesReceived += 1
-            rf.mu.Unlock()
-    	}
 
-        //fmt.Println("Leader Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
-		if updateToFollower {
-            rf.mu.Lock()
-			rf.status = FOLLOWER
-			go rf.ActAsFollower()
-            rf.mu.Unlock()
-			return
-		}
+        go func() {
+    		numRepliesReceived := 0
+    		numSuccessReceived := 1
+            updateToFollower := false
+        	for numRepliesReceived < len(rf.peers)-1 {
+    	        reply := <-c
+                rf.mu.Lock()
+        	    if reply.Success {
+        	        numSuccessReceived += 1
+    	        } else if reply.Term > rf.currentTerm {
+                    rf.currentTerm = reply.Term
+                    rf.votedFor    = -1
+    				updateToFollower = true
+    			}
+	            numRepliesReceived += 1
+                rf.mu.Unlock()
+        	}
+
+            //fmt.Println("Leader Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
+
+	    	if updateToFollower {
+                rf.mu.Lock()
+	    		rf.status = FOLLOWER
+    			//go rf.ActAsFollower()
+                rf.mu.Unlock()
+	    		return
+    		}
+        }()
         time.Sleep(rf.heartbeatTimeout)
     }
     rf.mu.Lock()
@@ -414,16 +412,15 @@ func (rf *Raft) ActAsCandidate() {
             break
         }
 		elapsed := time.Since(rf.electionTimer)
-        ////fmt.Println("Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
+        rf.mu.Unlock()
+        //////fmt.Println("Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
 		if elapsed > rf.electionTimeout {
-//            rf.mu.Lock()
+            rf.mu.Lock()
 		    //Increment current term
 		    rf.currentTerm += 1
 		    rf.votedFor = -1
 
-		    //Vote for self
-		    numRepliesReceived := 1
-		    numVotesReceived := 1
+		    //Vote for self 
 		    rf.votedFor = rf.me
 
 		    //Reset election timer
@@ -450,50 +447,42 @@ func (rf *Raft) ActAsCandidate() {
     		}
 
             rf.mu.Unlock()
-		    updateToFollower := false
-		    for {
-                rf.mu.Lock()
-                if numRepliesReceived >= len(rf.peers)-1 {
+
+            go func() {
+                updateToFollower := false
+                numRepliesReceived := 0
+                numVotesReceived := 1
+    		    for numRepliesReceived < len(rf.peers)-1 {
+    		        reply := <-c
+                    rf.mu.Lock()
+    		        if reply.Success {
+    		            if reply.VoteGranted {
+        		            numVotesReceived += 1
+	    	            } else if reply.Term > rf.currentTerm  {    //Update to follower with term received in reply
+                            rf.currentTerm = reply.Term
+                            rf.votedFor    = -1
+	                	    updateToFollower = true
+	            	    }
+	        	    }
+    	        	numRepliesReceived += 1
                     rf.mu.Unlock()
-                    break
+    	    	}
+                //fmt.Println("Leader election on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
+                rf.mu.Lock()
+                if rf.status == CANDIDATE {
+        		    if updateToFollower {
+    		    		rf.status = FOLLOWER
+    		            //go rf.ActAsFollower()
+        		    } else if numVotesReceived > len(rf.peers) / 2 {
+			        	rf.status = LEADER
+		                go rf.ActAsLeader()
+                    }
                 }
                 rf.mu.Unlock()
-		        reply := <-c
-                rf.mu.Lock()
-		        if reply.Success {
-		            if reply.VoteGranted {
-    		            numVotesReceived += 1
-		            } else if reply.Term > rf.currentTerm  {    //Update to follower with term received in reply
-                        rf.currentTerm = reply.Term
-                        rf.votedFor    = -1
-	            	    updateToFollower = true
-	            	}
-	        	}
-	        	numRepliesReceived += 1
-                rf.mu.Unlock()
-	    	}
-            //fmt.Println("Leader election on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
-            rf.mu.Lock()
-            if rf.status == CANDIDATE {
-    		    if updateToFollower {
-		    		rf.status = FOLLOWER
-		            go rf.ActAsFollower()
-                    rf.mu.Unlock()
-				    return
-    		    } else if numVotesReceived > len(rf.peers) / 2 {
-			    	rf.status = LEADER
-		            go rf.ActAsLeader()
-                    rf.mu.Unlock()
-	    			return
-                } else {
-                    rf.mu.Unlock()
-		        }
-            } else {
-                rf.mu.Unlock()
-            }
-		} else{
-           rf.mu.Unlock()
-        }
+                return
+            }()
+		}
+
         time.Sleep(10*time.Millisecond)
         rf.mu.Lock()
 		elapsed = time.Since(rf.electionTimer)
