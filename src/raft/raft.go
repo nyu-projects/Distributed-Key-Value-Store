@@ -31,7 +31,8 @@ const (
     LEADER
 )
 
-const ElectionPollInt := 1*time.Millisecond
+//const ElectionPollInt := 1*time.Millisecond
+
 //
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
@@ -75,6 +76,7 @@ type Raft struct {
     nextIndex       []int           //for each server, index of next log entry to send to it
     matchIndex      []int           //for each server, index of highest log entry known to be replicated on it
 
+    //extra volatile stuff needed
     state           int             //server's current state, Follower, Candidate, Leader
 }
 
@@ -141,6 +143,7 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
+	Success							bool		//Call Succeeded
     Term                            int         //current Term
     VoteGranted                     bool        //candidate received vote or not
 }
@@ -153,6 +156,7 @@ type AppendEntriesArgs struct {
     PrevLogTerm                     int             //term of PrevLogIndex
     LogEntries                      []LogEntry      //log entries to store
     LeaderCommit                    int             //leader's commit index
+	IsEmpty							bool
 }
 
 //AppendEntriesRPCReply
@@ -166,6 +170,15 @@ type AppendEntriesReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+    rf.mu.Lock()
+    defer rf.mu.Unlock()
+    if args.CandidatesTerm < rf.currentTerm {
+        reply.VoteGranted = false;
+        reply.Term        = rf.currentTerm
+        reply.Success     = true
+    } else if rf.votedFor == -1 || rf.votedFor == 
+
+
 }
 
 //
@@ -238,37 +251,120 @@ func (rf *Raft) Kill() {
 }
 
 func ActAsLeader(){
+    for rf.status == LEADER {
+        AppendConclude chan int
+		args := &AppendEntriesArgs {
+    		LeadersTerm  : rf.currentTerm             ,
+    		LeaderId     : rf.me          			  ,
+    		PrevLogIndex : len(rf.log)-1  			  ,
+    		PrevLogTerm  : rf.log[len(rf.log)-1].term ,
+    		LeaderCommit : rf.commitIndex			  ,
+			IsEmpty		 : true
+		}
 
+	    c := make(chan *AppendEntriesReply)
+
+	    //Send AppendEntry RPCs to everyone
+    	for idx := 0; idx < len(rf.peers); idx++ {
+        	reply := &AppendEntriesReply{}
+        	go func (server int, args *AppendEntriesArgs, reply *AppendEntriesReply, c chan *AppendEntriesReply) {
+            	if idx != rf.me {
+                	ok := rf.peers[server].Call("Raft.AppendEntry", args, reply)
+                	c <- reply
+            	}
+        	}(idx, args, reply, c)
+    	}
+
+		numRepliesReceived := 1
+		numSuccessReceived := 1
+		updateToFollower = false
+    	for numRepliesReceived < len(rf.peers)-1 {
+	        reply := <-c
+    	    if reply.Success {
+    	        numSuccessReceived += 1
+	        } else if reply.Term > rf.currentTerm {
+				updateToFollower = true
+			}
+	        numRepliesReceived += 1
+    	}
+
+		if updateToFollower {
+			rf.status = FOLLOWER
+			break
+		}
+        time.Sleep(HeartbeatTimer)
+    }
 }
 
 func ActAsFollower(){
 
 }
 
-func ActAsCandidate(){
+func ActAsCandidate(electionConclude chan int) {
     //Increment current term
     rf.currentTerm += 1
+    rf.votedFor = -1
+
     //Vote for self
+	numRepliesReceived := 1
+    numVotesReceived := 1
 
     //Reset election timer
-
+    ElectionTimer := time.Now()
+    args := &RequestVoteArgs{
+    	CandidatesTerm : rf.currentTerm,
+    	CandidateId    : rf.me         ,
+    	LastLogIndex   : len(rf.log)-1 ,
+    	LastLogTerm    : rf.log[len(rf.log)-1].term
+    }
+    c := make(chan *RequestVoteReply)
     //Send Request Vote RPCs to everyone
     for idx := 0; idx < len(rf.peers); idx++ {
-        if idx != rf.me {
-            ok := srv.peers[idx].Call("PBServer.Prepare", args, reply)
-        }
+        reply := &RequestVoteReply{}
+        go func (server int, args *RequestVoteArgs, reply *RequestVoteReply, c chan *RequestVoteReply) {
+            if idx != rf.me {
+                ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+                c <- reply
+            }
+        }(idx, args, reply, c)
     }
+
+	updateToFollower := false
+    for numRepliesReceived < len(rf.peers) {
+        reply := <-c
+        if reply.Success {
+			if reply.VoteGranted {
+				numVotesReceived += 1
+			}
+			else if reply.Term > rf.currentTerm  {	//Update to follower with term received in reply
+				updateToFollower = true
+			}
+        }
+        numRepliesReceived += 1
+    }
+
+	if updateToFollower {
+		go ActAsFollower()
+		electionConclude <- true
+	} else if numVotesReceived > len(rf.peers) / 2 {
+		//Current server is leader
+		go ActAsLeader()
+        //fmt.Println("Primary: srv.me", srv.me, "updating commitIndex to", srv.commitIndex)
+		electionConclude <- true
+    } else {
+		electionConclude <- false
+	}
 }
 
 func KickoffLeaderElection(){
-    for {
+    for rf.status == CANDIDATE {
         electionConclude chan int
         go ActAsCandidate(electionConclude)
         reply := <-electionConclude
         if reply {
             break
         }
-        time.Sleep(ElectionPollInt)
+        time.Sleep(ElectionTimer)
     }
     return
 }
@@ -292,10 +388,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+    rf.currentTerm = 0
+    rf.votedFor    = -1
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	//rf.readPersist(persister.ReadRaftState())
 
+    electionTimer := time.Now()
+    rf.state = FOLLOWER
     go KickoffLeaderElection()
 
 	return rf
