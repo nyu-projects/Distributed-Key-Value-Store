@@ -21,7 +21,7 @@ import "sync"
 import "labrpc"
 import "time"
 import "math/rand"
-//import "fmt"
+import "fmt"
 //import "strings"
 // import "bytes"
 // import "encoding/gob"
@@ -156,8 +156,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         return
     } else if args.CandidatesTerm == rf.currentTerm {
         if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && (args.LastLogIndex == len(rf.log)-1 && args.LastLogTerm == rf.log[len(rf.log)-1].Term) {
-//            rf.status = FOLLOWER
-//            rf.electionTimer = time.Now()
+            rf.status = FOLLOWER
+            rf.electionTimer = time.Now()
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
             //reply.Success = true
@@ -509,7 +509,7 @@ func (rf *Raft) ActAsCandidate() {
             }()
 		}
 
-        time.Sleep(10*time.Millisecond)
+        time.Sleep(2*time.Millisecond)
         rf.mu.Lock()
 		elapsed = time.Since(rf.electionTimer)
         rf.mu.Unlock()
@@ -554,10 +554,15 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		Log  : v}
     rf.log = append(rf.log, lg)
 
-    s := rand.NewSource(time.Now().UnixNano())
-    r := rand.New(s)
-    numOut := int(500 + r.Float64() * 400)
-    tout := time.Duration(numOut)
+    //s := rand.NewSource(time.Now().UnixNano())
+    r1 := rand.New(rand.NewSource(time.Now().UnixNano()))
+    numOut1 := int(500 + r1.Float64() * 300)
+
+    newSeed := int64((me + 1) * 100)
+    r2 := rand.New(rand.NewSource(newSeed))
+    numOut2 := int(r2.Float64() * 100)
+
+    tout := time.Duration(numOut1+numOut2)
 
     rf.electionTimeout = tout * time.Millisecond
     rf.heartbeatTimeout = 100 * time.Millisecond
