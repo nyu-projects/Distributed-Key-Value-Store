@@ -158,6 +158,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && (args.LastLogIndex == len(rf.log)-1 && args.LastLogTerm == rf.log[len(rf.log)-1].Term) {
             rf.status = FOLLOWER
             rf.electionTimer = time.Now()
+            rf.votedFor = args.CandidateId
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
             //reply.Success = true
