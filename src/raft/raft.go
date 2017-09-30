@@ -556,13 +556,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
     //s := rand.NewSource(time.Now().UnixNano())
     r1 := rand.New(rand.NewSource(time.Now().UnixNano()))
-    numOut1 := int(500 + r1.Float64() * 300)
+    numOut1 := int(5 + r1.Float64() * 5)
 
-    newSeed := int64((me + 1) * 100)
-    r2 := rand.New(rand.NewSource(newSeed))
-    numOut2 := int(r2.Float64() * 100)
+    newSeed := ((me + 1) * 10)
+    //r2 := rand.New(rand.NewSource(newSeed))
+    //numOut2 := int(r2.Float64() * 100)
+    numOut2 := numOut1 * 100 + newSeed
 
-    tout := time.Duration(numOut1+numOut2)
+    tout := time.Duration(numOut2)
 
     rf.electionTimeout = tout * time.Millisecond
     rf.heartbeatTimeout = 100 * time.Millisecond
