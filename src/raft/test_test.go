@@ -328,8 +328,8 @@ func TestBackup2B(t *testing.T) {
 
 	fmt.Printf("Test (2B): leader backs up quickly over incorrect follower logs ...\n")
 
-	//cfg.one(rand.Int(), servers)
-    cfg.one(123, servers)
+	cfg.one(rand.Int(), servers)
+    //cfg.one(123, servers)
 
 	// put leader and one follower in a partition
 	leader1 := cfg.checkOneLeader()
@@ -387,10 +387,10 @@ func TestBackup2B(t *testing.T) {
 	cfg.connect(other)
 
 	// lots of successful commands to new group.
-	//for i := 0; i < 50; i++ {
-		//cfg.one(rand.Int(), 3)
-    for i := 0; i < 5; i++ {
-        cfg.one((i+16)*10, 3)
+	for i := 0; i < 50; i++ {
+		cfg.one(rand.Int(), 3)
+    //for i := 0; i < 5; i++ {
+        //cfg.one((i+16)*10, 3)
 	}
 
 	// now everyone
