@@ -347,13 +347,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
     if rf.status != LEADER {
         return -1, -1, false
     }
-    fmt.Println("Start srv", rf.me, "Received command: ", command)
     currentEntry := LogEntry{
                         Log  : command,
                         Term : rf.currentTerm}
 
     rf.log = append(rf.log, currentEntry)
-
+    fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", rf.log, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
 	index := len(rf.log) - 1
 	term := rf.currentTerm
 	isLeader := true
@@ -467,7 +466,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                     }
 					//fmt.Println("Start srv", rf.me, "Collector thread: Sending ApplyMsg", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
 		            go func() {
-						fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
+						fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "rf.log", rf.log, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
                 		for {
         		            rf.mu.Lock()
 		                    if rf.lastApplied == rf.commitIndex {
@@ -475,12 +474,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                 		        break
         		            }
 		                    rf.lastApplied += 1
-							fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "rf.log", rf.log)
+							//fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "rf.log", rf.log)
 		                    appMsg := ApplyMsg {
         		                Index       : rf.lastApplied,
                 		        Command     : rf.log[rf.lastApplied].Log}
 		                    //rf.mu.Unlock()
-                            fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: Sending ApplyMsg", appMsg)
+                            //fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: Sending ApplyMsg", appMsg)
                 		    rf.applyChan <- appMsg
 							rf.mu.Unlock()
         		        }
@@ -507,8 +506,8 @@ func (rf *Raft) Kill() {
 }
 
 func (rf *Raft) ActAsLeader() {
-    fmt.Println("Leader srv", rf.me)
-	rf.mu.Lock()
+    rf.mu.Lock()
+    fmt.Println("Leader srv", rf.me, "rf.log", rf.log, "rf.currentTerm", rf.currentTerm, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
     for idx := 0; idx < len(rf.peers); idx++ {
         if idx != rf.me {
             rf.nextIndex[idx]  = len(rf.log)
@@ -518,9 +517,7 @@ func (rf *Raft) ActAsLeader() {
             rf.matchIndex[idx] = len(rf.log) - 1
         }
     }
-    fmt.Println("Leader: srv", rf.me, "Set all nextidx and matchidx")
 	rf.mu.Unlock()
-
     for {
         rf.mu.Lock()
         if rf.status != LEADER {
@@ -533,22 +530,17 @@ func (rf *Raft) ActAsLeader() {
         if elapsed > rf.heartbeatTimeout {
 			rf.mu.Lock()
 			rf.heartbeatTimer = time.Now()
-//			args := &AppendEntriesArgs {
-//    			LeadersTerm  : rf.currentTerm             ,
-//    			LeaderId     : rf.me					  ,
-//    			PrevLogIndex : len(rf.log)-1			  ,
-//	    		PrevLogTerm  : rf.log[len(rf.log)-1].Term ,
-//    			LeaderCommit : rf.commitIndex			  ,
-//				IsEmpty		 : true}
-
 		    AppendEntriesChannel := make(chan *AppendEntriesReply, len(rf.peers)-1)
-
 		    //Send AppendEntry RPCs to everyone
     		for idx := 0; idx < len(rf.peers); idx++ {
         	    if idx != rf.me {
-                    go func (server int) {
+                    go func (server int, currentTerm int) {
                         for {
                             rf.mu.Lock()
+                            if rf.status != LEADER{
+                                rf.mu.Unlock()
+                                break
+                            }
                             var logEntryArray []LogEntry
 							currNextIdx := rf.nextIndex[server]
                             logIdx := rf.nextIndex[server]
@@ -559,7 +551,7 @@ func (rf *Raft) ActAsLeader() {
                             logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
 							//fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex", logIdx, "logEntryArray", logEntryArray, "rf.log", rf.log)
                             args := &AppendEntriesArgs {
-                                LeadersTerm  : rf.currentTerm             ,
+                                LeadersTerm  : currentTerm                ,
                                 LeaderId     : rf.me                      ,
                                 PrevLogIndex : logIdx                     ,
                                 PrevLogTerm  : rf.log[logIdx].Term        ,
@@ -586,7 +578,7 @@ func (rf *Raft) ActAsLeader() {
                                     //fmt.Println("Leader: srv", rf.me, "Breaking off for srv", server)
                                     rf.mu.Unlock()
                                     break
-                                } else if reply.Term > rf.currentTerm {
+                                } else if reply.Term > currentTerm {
                                     AppendEntriesChannel <- reply
                                     rf.mu.Unlock()
                                     //fmt.Println("Leader: srv", rf.me, "Follower ", server, "has higher term. Breaking off")
@@ -606,17 +598,7 @@ func (rf *Raft) ActAsLeader() {
                             rf.mu.Unlock()
                         }
                         return
-                    }(idx)
-//	        	    go func (server int) {
-//    	                reply := &AppendEntriesReply{}
-//                        fmt.Println("Leader: srv", rf.me, "Sending AppendEntry Heartbeat to srv", server, "args", args)
-//        	        	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
-//	                    if ok {
-//    	                    AppendEntriesChannel <- reply
-//        	            }else{
-//            	            AppendEntriesChannel <- nil
-//	                    }
-//	        	    }(idx)
+                    }(idx, rf.currentTerm)
     	        }
     		}
 	        rf.mu.Unlock()
