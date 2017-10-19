@@ -375,6 +375,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 								break
 							}
 						    var logEntryArray []LogEntry
+                            currNextIdx := rf.nextIndex[server]
 							logIdx := rf.nextIndex[server]
 							for logIdx < len(rf.log) {
 								logEntryArray = append(logEntryArray, rf.log[logIdx])
@@ -397,7 +398,13 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                             fmt.Println("Start srv", rf.me, "Received reply from srv", server, "reply", reply)
 	                    	if ok {
 								if reply.Success {
-									rf.nextIndex[server]   += len(logEntryArray)
+                                    if currNextIdx + len(logEntryArray) > rf.nextIndex[server] {
+                                        rf.nextIndex[server] = currNextIdx + len(logEntryArray)
+                                    }
+                                    if rf.nextIndex[server] > len(rf.log) {
+                                        rf.nextIndex[server] = len(rf.log)
+                                    }
+									//rf.nextIndex[server]   += len(logEntryArray)
 									rf.matchIndex[server]   = rf.nextIndex[server] - 1
 									AppendEntriesChannel <- reply
 									fmt.Println("Start srv", rf.me, "Breaking off for srv", server)
@@ -543,6 +550,7 @@ func (rf *Raft) ActAsLeader() {
                         for {
                             rf.mu.Lock()
                             var logEntryArray []LogEntry
+							currNextIdx := rf.nextIndex[server]
                             logIdx := rf.nextIndex[server]
                             for logIdx < len(rf.log) {
                                 logEntryArray = append(logEntryArray, rf.log[logIdx])
@@ -566,7 +574,13 @@ func (rf *Raft) ActAsLeader() {
                             //fmt.Println("Leader: srv", rf.me, "Received reply from srv", server, "reply", reply)
                             if ok {
                                 if reply.Success {
-                                    rf.nextIndex[server]   += len(logEntryArray)
+                                    if currNextIdx + len(logEntryArray) > rf.nextIndex[server] {
+                                        rf.nextIndex[server] = currNextIdx + len(logEntryArray)
+                                    }
+                                    if rf.nextIndex[server] > len(rf.log) {
+                                        rf.nextIndex[server] = len(rf.log)
+                                    }
+                                    //rf.nextIndex[server]   += len(logEntryArray)
                                     rf.matchIndex[server]   = rf.nextIndex[server] - 1
                                     AppendEntriesChannel <- reply
                                     //fmt.Println("Leader: srv", rf.me, "Breaking off for srv", server)
