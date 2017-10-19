@@ -411,7 +411,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                                 } else {
                                     rf.nextIndex[server]   -= 1
 									fmt.Println("Start srv", rf.me, "Decrementing nextIdx for srv", server)
+									if rf.nextIndex[server] < 1 {
+										rf.nextIndex[server] = 1
+									}
                                 }
+                            } else{
+                                AppendEntriesChannel <- nil
+                                rf.mu.Unlock()
+                                break
                             }
 							rf.mu.Unlock()
 						}
@@ -573,7 +580,14 @@ func (rf *Raft) ActAsLeader() {
                                 } else {
                                     rf.nextIndex[server]   -= 1
                                     //fmt.Println("Leader: srv", rf.me, "Decrementing nextIdx for srv", server)
+									if rf.nextIndex[server] < 1{
+										rf.nextIndex[server] = 1
+									}
                                 }
+                            } else {
+                                AppendEntriesChannel <- nil
+                                rf.mu.Unlock()
+                                break
                             }
                             rf.mu.Unlock()
                         }
