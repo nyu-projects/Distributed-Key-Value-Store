@@ -146,13 +146,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
     rf.mu.Lock()
     defer rf.mu.Unlock()
-    ////fmt.Println(rf.logId,"Received RequestVote on srv ", rf.me, "Args", args)
-    ////fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", len(rf.log)-1, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
+    //fmt.Println(rf.logId,"Received RequestVote on srv ", rf.me, "Args", args)
+    //fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "srv term", rf.currentTerm, " lastLogIdx ", len(rf.log)-1, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
 
     if args.CandidatesTerm < rf.currentTerm {
         reply.VoteGranted = false
         reply.Term        = rf.currentTerm
-        ////fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 1")
+        //fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 1")
         return
     } else if args.CandidatesTerm == rf.currentTerm {
         grantVote := ((args.LastLogTerm > rf.log[len(rf.log)-1].Term) || ((args.LastLogTerm == rf.log[len(rf.log)-1].Term) && (args.LastLogIndex >= len(rf.log)-1)))
@@ -162,12 +162,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             rf.votedFor = args.CandidateId
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
-            ////fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 2")
+            //fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 2")
             return
         } else {
             reply.VoteGranted = false
             reply.Term = rf.currentTerm
-            ////fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 3")
+            //fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 3")
             return
         }
     } else {
@@ -180,12 +180,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             rf.electionTimer = time.Now()
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
-            ////fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 4")
+            //fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 4")
             return
         } else {
             reply.VoteGranted = false
             reply.Term = rf.currentTerm
-            ////fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 5")
+            //fmt.Println(rf.logId,"RequestVote: On srv ", rf.me, "inside 5")
             return
         }
     }
@@ -464,7 +464,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                     if index > rf.commitIndex && index < len(rf.log) {
                        rf.commitIndex = index
                     }
-					////fmt.Println("Start srv", rf.me, "Collector thread: Sending ApplyMsg", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
+					//fmt.Println("Start srv", rf.me, "Collector thread: Sending ApplyMsg", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
 		            go func() {
 						//fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "rf.log", rf.log, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
                 		for {
@@ -474,12 +474,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                 		        break
         		            }
 		                    rf.lastApplied += 1
-							////fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "rf.log", rf.log)
+							//fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: ", "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "rf.log", rf.log)
 		                    appMsg := ApplyMsg {
         		                Index       : rf.lastApplied,
                 		        Command     : rf.log[rf.lastApplied].Log}
 		                    //rf.mu.Unlock()
-                            ////fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: Sending ApplyMsg", appMsg)
+                            //fmt.Println("Start srv", rf.me, "ApplyMsgSender thread: Sending ApplyMsg", appMsg)
                 		    rf.applyChan <- appMsg
 							rf.mu.Unlock()
         		        }
@@ -549,7 +549,7 @@ func (rf *Raft) ActAsLeader() {
                                 logIdx += 1
                             }
                             logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
-							////fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex", logIdx, "logEntryArray", logEntryArray, "rf.log", rf.log)
+							//fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex", logIdx, "logEntryArray", logEntryArray, "rf.log", rf.log)
                             args := &AppendEntriesArgs {
                                 LeadersTerm  : currentTerm                ,
                                 LeaderId     : rf.me                      ,
@@ -560,10 +560,10 @@ func (rf *Raft) ActAsLeader() {
                                 IsEmpty      : len(logEntryArray)==0}
                             rf.mu.Unlock()
                             reply := &AppendEntriesReply{}
-                            ////fmt.Println("Leader: srv", rf.me, "Sending AppendEntries to srv", server, "args", args)
+                            //fmt.Println("Leader: srv", rf.me, "Sending AppendEntries to srv", server, "args", args)
                             ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
                             rf.mu.Lock()
-                            ////fmt.Println("Leader: srv", rf.me, "Received reply from srv", server, "reply", reply)
+                            //fmt.Println("Leader: srv", rf.me, "Received reply from srv", server, "reply", reply)
                             if ok {
                                 if reply.Success {
                                     if currNextIdx + len(logEntryArray) > rf.nextIndex[server] {
@@ -575,17 +575,17 @@ func (rf *Raft) ActAsLeader() {
                                     //rf.nextIndex[server]   += len(logEntryArray)
                                     rf.matchIndex[server]   = rf.nextIndex[server] - 1
                                     AppendEntriesChannel <- reply
-                                    ////fmt.Println("Leader: srv", rf.me, "Breaking off for srv", server)
+                                    //fmt.Println("Leader: srv", rf.me, "Breaking off for srv", server)
                                     rf.mu.Unlock()
                                     break
                                 } else if reply.Term > currentTerm {
                                     AppendEntriesChannel <- reply
                                     rf.mu.Unlock()
-                                    ////fmt.Println("Leader: srv", rf.me, "Follower ", server, "has higher term. Breaking off")
+                                    //fmt.Println("Leader: srv", rf.me, "Follower ", server, "has higher term. Breaking off")
                                     break
                                 } else {
                                     rf.nextIndex[server]   -= 1
-                                    ////fmt.Println("Leader: srv", rf.me, "Decrementing nextIdx for srv", server)
+                                    //fmt.Println("Leader: srv", rf.me, "Decrementing nextIdx for srv", server)
 									if rf.nextIndex[server] < 1{
 										rf.nextIndex[server] = 1
 									}
@@ -625,13 +625,13 @@ func (rf *Raft) ActAsLeader() {
 	                }
     	    	}
 
-            	////fmt.Println("Leader: Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
+            	//fmt.Println("Leader: Heartbeat reply on srv", rf.me, "numRepliesReceived", numRepliesReceived, "numSuccessReceived", numSuccessReceived, "updateToFollower", updateToFollower)
             	rf.mu.Lock()
 	    		if updateToFollower && rf.currentTerm < highestTermSeen {
 		    		rf.status = FOLLOWER
 	                rf.currentTerm = highestTermSeen
                 	rf.votedFor = -1
-            	    ////fmt.Println("Leader: srv", rf.me, "Found a srv with higer term")
+            	    //fmt.Println("Leader: srv", rf.me, "Found a srv with higer term")
     			}
 	            rf.mu.Unlock()
 	            return
@@ -649,7 +649,7 @@ func (rf *Raft) ActAsLeader() {
 }
 
 func (rf *Raft) ActAsFollower() {
-    ////fmt.Println(rf.logId,"Follower srv ", rf.me)
+    //fmt.Println(rf.logId,"Follower srv ", rf.me)
     rf.mu.Lock()
     rf.electionTimer = time.Now()
     rf.mu.Unlock()
@@ -672,7 +672,7 @@ func (rf *Raft) ActAsFollower() {
 	}
 
     if triggerElection {
-        ////fmt.Println(rf.logId,"Follower Timeout on srv ", rf.me)
+        //fmt.Println(rf.logId,"Follower Timeout on srv ", rf.me)
         rf.mu.Lock()
 		rf.status = CANDIDATE
         go rf.ActAsCandidate()
@@ -681,7 +681,7 @@ func (rf *Raft) ActAsFollower() {
 }
 
 func (rf *Raft) ActAsCandidate() {
-    ////fmt.Println(rf.logId,"Candidate srv ", rf.me)
+    //fmt.Println(rf.logId,"Candidate srv ", rf.me)
 	for {
         rf.mu.Lock()
 
@@ -691,7 +691,7 @@ func (rf *Raft) ActAsCandidate() {
         }
 		elapsed := time.Since(rf.electionTimer)
         rf.mu.Unlock()
-        //////fmt.Println(rf.logId,"Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
+        ////fmt.Println(rf.logId,"Candidate srv ", rf.me, "elapsed", elapsed, "rf.electionTimeout", rf.electionTimeout)
 		if elapsed > rf.electionTimeout {
             rf.mu.Lock()
 		    //Increment current term
@@ -712,7 +712,7 @@ func (rf *Raft) ActAsCandidate() {
 		    //Send Request Vote RPCs to everyone but myself
 		    for idx := 0; idx < len(rf.peers); idx++ {
                 if idx != rf.me {
-                    ////fmt.Println(rf.logId,"Candidate srv ", rf.me, "Sending Request Vote", args, " to srv ", idx)
+                    //fmt.Println(rf.logId,"Candidate srv ", rf.me, "Sending Request Vote", args, " to srv ", idx)
     		        go func (server int) {
                             reply := &RequestVoteReply{}
 	                    	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
@@ -748,7 +748,7 @@ func (rf *Raft) ActAsCandidate() {
                         break
                     }
     	    	}
-                ////fmt.Println(rf.logId,"Candidate: election finished on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
+                //fmt.Println(rf.logId,"Candidate: election finished on srv ", rf.me, "numRepliesReceived", numRepliesReceived, "numVotesReceived", numVotesReceived, "updateToFollower", updateToFollower)
                 rf.mu.Lock()
                 quorum := len(rf.peers) / 2
                 //if rf.status == CANDIDATE {
@@ -757,10 +757,10 @@ func (rf *Raft) ActAsCandidate() {
                     rf.votedFor = -1
     		    	rf.status = FOLLOWER
     		        //go rf.ActAsFollower()
-                    ////fmt.Println(rf.logId,"Candidate: srv", rf.me, "found a server with higher term")
+                    //fmt.Println(rf.logId,"Candidate: srv", rf.me, "found a server with higher term")
         		} else if rf.status == CANDIDATE && numVotesReceived > quorum {
 			        rf.status = LEADER
-                    ////fmt.Println(rf.logId,"Candidate: srv", rf.me, "becoming leader")
+                    //fmt.Println(rf.logId,"Candidate: srv", rf.me, "becoming leader")
 		            go rf.ActAsLeader()
                 }
                 //}
@@ -776,7 +776,7 @@ func (rf *Raft) ActAsCandidate() {
 	}
     rf.mu.Lock()
 	if rf.status == FOLLOWER {
-        ////fmt.Println(rf.logId,"Candidate: srv", rf.me,"becoming follower")
+        //fmt.Println(rf.logId,"Candidate: srv", rf.me,"becoming follower")
 		go rf.ActAsFollower()
 	}
     rf.mu.Unlock()
