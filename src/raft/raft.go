@@ -424,8 +424,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 								logEntryArray = append(logEntryArray, rf.log[logIdx])
 								logIdx += 1
 							}
-							//logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
-                            logIdx = rf.nextIndex[server] - 1
+							logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
+                            if logIdx < 0 {
+                                logIdx = 0
+                            }
+                            //logIdx = rf.nextIndex[server] - 1
                             //fmt.Println("Start: srv", rf.me, "For server", server, "PrevLogIndex",logIdx,"rf.log",len(rf.log))
 						    args := &AppendEntriesArgs {
 					            LeadersTerm  : currentTerm                ,
@@ -441,7 +444,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                     		ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 							rf.mu.Lock()
                             //fmt.Println("Start srv", rf.me, "Received reply from srv", server, "reply", reply)
-	                    	if ok {
+	                    	if ok && rf.currentTerm == currentTerm {
 								if reply.Success {
                                     if currNextIdx + len(logEntryArray) > rf.nextIndex[server] {
                                         rf.nextIndex[server] = currNextIdx + len(logEntryArray)
@@ -468,7 +471,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 										rf.nextIndex[server] = 1
 									}
                                 }
-                            } else{
+                            } else if ok && reply.Term > rf.currentTerm {
+                                AppendEntriesChannel <- reply
+                                rf.mu.Unlock()
+                                break
+                            } else {
                                 AppendEntriesChannel <- nil
                                 rf.mu.Unlock()
                                 break
@@ -596,8 +603,11 @@ func (rf *Raft) ActAsLeader() {
                                 logEntryArray = append(logEntryArray, rf.log[logIdx])
                                 logIdx += 1
                             }
-                            //logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
-                            logIdx = rf.nextIndex[server] - 1
+                            logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
+                            if logIdx < 0{
+                                logIdx = 0
+                            }
+                            //logIdx = rf.nextIndex[server] - 1
 							//fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex",logIdx,"rf.log",len(rf.log))
                             args := &AppendEntriesArgs {
                                 LeadersTerm  : currentTerm                ,
@@ -613,7 +623,7 @@ func (rf *Raft) ActAsLeader() {
                             ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
                             rf.mu.Lock()
                             //fmt.Println("Leader: srv", rf.me, "Received reply from srv", server, "reply", reply)
-                            if ok {
+                            if ok && currentTerm == rf.currentTerm {
                                 if reply.Success {
                                     if currNextIdx + len(logEntryArray) > rf.nextIndex[server] {
                                         rf.nextIndex[server] = currNextIdx + len(logEntryArray)
@@ -638,6 +648,10 @@ func (rf *Raft) ActAsLeader() {
 										rf.nextIndex[server] = 1
 									}
                                 }
+                            } else if ok && reply.Term > rf.currentTerm {
+                                AppendEntriesChannel <- reply
+                                rf.mu.Unlock()
+                                break
                             } else {
                                 AppendEntriesChannel <- nil
                                 rf.mu.Unlock()
@@ -761,15 +775,17 @@ func (rf *Raft) ActAsCandidate() {
 		    for idx := 0; idx < len(rf.peers); idx++ {
                 if idx != rf.me {
                     //fmt.Println("Candidate srv ", rf.me, "Sending Request Vote", args, " to srv ", idx)
-    		        go func (server int) {
+    		        go func (server int, currentTerm int) {
                             reply := &RequestVoteReply{}
 	                    	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-                            if ok {
+                            rf.mu.Lock()
+                            if (ok && rf.currentTerm == currentTerm) || (ok && reply.Term > rf.currentTerm) {
                                 RequestVoteChannel <- reply
                             } else {
         	                	RequestVoteChannel <- nil
             	        	}
-    	        	}(idx)
+                            rf.mu.Unlock()
+    	        	}(idx, rf.currentTerm)
                 }
     		}
 
