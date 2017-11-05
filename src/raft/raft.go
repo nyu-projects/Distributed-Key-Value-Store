@@ -21,7 +21,7 @@ import "labrpc"
 import "time"
 import "math/rand"
 //import "math"
-import "fmt"
+//import "fmt"
 //import "strings"
 import "bytes"
 import "encoding/gob"
@@ -110,7 +110,7 @@ func (rf *Raft) persist() {
 	e := gob.NewEncoder(w)
     pData := PersistData{rf.currentTerm, rf.votedFor, rf.log}
 	e.Encode(pData)
-    fmt.Println("Persist: srv", rf.me, " pData ", len(pData.Log))
+    //fmt.Println("Persist: srv", rf.me, " pData ", len(pData.Log))
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
 }
@@ -125,7 +125,7 @@ func (rf *Raft) readPersist(data []byte) bool {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return false
 	}
-    fmt.Println("Read Persist: srv", rf.me, " pData ", len(pData.Log))
+    //fmt.Println("Read Persist: srv", rf.me, " pData ", len(pData.Log))
     rf.currentTerm  = pData.CurrentTerm
     rf.votedFor     = pData.VotedFor
     rf.log = make([]LogEntry, len(pData.Log))
@@ -158,12 +158,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
     rf.mu.Lock()
     defer rf.mu.Unlock()
     //fmt.Println("Received RequestVote on srv ", rf.me, "Args", args)
-    fmt.Println("RequestVote: On srv ", rf.me, "Args", args, "srv term", rf.currentTerm, " lastLogIdx ", len(rf.log)-1, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
+    //fmt.Println("RequestVote: On srv ", rf.me, "Args", args, "srv term", rf.currentTerm, " lastLogIdx ", len(rf.log)-1, " lastLogTerm ", rf.log[len(rf.log)-1].Term)
 
     if args.CandidatesTerm < rf.currentTerm {
         reply.VoteGranted = false
         reply.Term        = rf.currentTerm
-        fmt.Println("RequestVote: On srv ", rf.me, "inside 1")
+        //fmt.Println("RequestVote: On srv ", rf.me, "inside 1")
         return
     } else if args.CandidatesTerm == rf.currentTerm {
         grantVote := ((args.LastLogTerm > rf.log[len(rf.log)-1].Term) || ((args.LastLogTerm == rf.log[len(rf.log)-1].Term) && (args.LastLogIndex >= len(rf.log)-1)))
@@ -174,31 +174,32 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             rf.persist()
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
-            fmt.Println("RequestVote: On srv ", rf.me, "inside 2")
+            //fmt.Println("RequestVote: On srv ", rf.me, "inside 2")
             return
         } else {
             reply.VoteGranted = false
             reply.Term = rf.currentTerm
-            fmt.Println("RequestVote: On srv ", rf.me, "inside 3")
+            //fmt.Println("RequestVote: On srv ", rf.me, "inside 3")
             return
         }
     } else {
         rf.currentTerm = args.CandidatesTerm
         rf.votedFor = -1
-        rf.persist()
         rf.status = FOLLOWER
         grantVote := ((args.LastLogTerm > rf.log[len(rf.log)-1].Term) || ((args.LastLogTerm == rf.log[len(rf.log)-1].Term) && (args.LastLogIndex >= len(rf.log)-1)))
         if grantVote {
             rf.votedFor    = args.CandidateId
             rf.electionTimer = time.Now()
+            rf.persist()
             reply.VoteGranted = true
             reply.Term = rf.currentTerm
-            fmt.Println("RequestVote: On srv ", rf.me, "inside 4")
+            //fmt.Println("RequestVote: On srv ", rf.me, "inside 4")
             return
         } else {
+            rf.persist()
             reply.VoteGranted = false
             reply.Term = rf.currentTerm
-            fmt.Println("RequestVote: On srv ", rf.me, "inside 5")
+            //fmt.Println("RequestVote: On srv ", rf.me, "inside 5")
             return
         }
     }
@@ -234,26 +235,19 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
     // Your code here (2A, 2B). 
     rf.mu.Lock()
     defer rf.mu.Unlock()
-    fmt.Println("AppendEntries srv:", rf.me, "Args:", args, "rf.currentTerm:", rf.currentTerm)
+    //fmt.Println("AppendEntries srv:", rf.me, "Args:", args, "rf.currentTerm:", rf.currentTerm)
 	if args.LeadersTerm < rf.currentTerm {
-        fmt.Println("AppendEntries srv:", rf.me, "Case 1")
+        //fmt.Println("AppendEntries srv:", rf.me, "Case 1")
 		reply.Term	  = rf.currentTerm
 		reply.Success = false
 	} else if args.PrevLogIndex > len(rf.log)-1 {
-        fmt.Println("AppendEntries srv:", rf.me, "Case 2")
-        //firstIdxWithTerm := args.PrevLogIndex
-        //for firstIdxWithTerm > 0 {
-        //    if firstIdxWithTerm == len(rf.log) {
-        //        break
-        //    }
-        //    firstIdxWithTerm -= 1
-        //}
+        //fmt.Println("AppendEntries srv:", rf.me, "Case 2") 
         reply.ConflictEntryIdx = len(rf.log)
         reply.ConflictTerm	   = -1
         reply.Term    = rf.currentTerm
         reply.Success = false
     } else if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
-        fmt.Println("AppendEntries srv:", rf.me, "Case 3")
+        //fmt.Println("AppendEntries srv:", rf.me, "Case 3")
         firstIdxWithTerm := args.PrevLogIndex
         for firstIdxWithTerm > 0 {
             if rf.log[firstIdxWithTerm-1].Term != rf.log[firstIdxWithTerm].Term {
@@ -266,7 +260,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         reply.Term    = rf.currentTerm
         reply.Success = false
     } else {
-        fmt.Println("AppendEntries srv:", rf.me, "Case 4")
+        //fmt.Println("AppendEntries srv:", rf.me, "Case 4")
         if args.LeadersTerm > rf.currentTerm {
             rf.votedFor = -1
         }
@@ -384,7 +378,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                         Term : rf.currentTerm}
 
     rf.log = append(rf.log, currentEntry)
-    fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", len(rf.log), "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
+    //fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", len(rf.log), "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
 	index := len(rf.log) - 1
 	term := rf.currentTerm
 	isLeader := true
@@ -415,7 +409,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 							}
 							//logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
                             logIdx = rf.nextIndex[server] - 1
-                            fmt.Println("Start: srv", rf.me, "For server", server, "PrevLogIndex",logIdx,"rf.log",len(rf.log))
+                            //fmt.Println("Start: srv", rf.me, "For server", server, "PrevLogIndex",logIdx,"rf.log",len(rf.log))
 						    args := &AppendEntriesArgs {
 					            LeadersTerm  : currentTerm                ,
 					            LeaderId     : rf.me                      ,
@@ -496,7 +490,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
         	        rf.currentTerm = highestTermSeen
                 	rf.votedFor = -1
                     rf.persist()
-	                fmt.Println("Start srv", rf.me, "Collector thread: srv", rf.me, "Found a srv with higher term")
+	                //fmt.Println("Start srv", rf.me, "Collector thread: srv", rf.me, "Found a srv with higher term")
             	} else if rf.status == LEADER && numSuccessReceived > len(rf.peers) / 2 {
                     if index > rf.commitIndex && index < len(rf.log) {
                        rf.commitIndex = index
@@ -544,7 +538,7 @@ func (rf *Raft) Kill() {
 
 func (rf *Raft) ActAsLeader() {
     rf.mu.Lock()
-    fmt.Println("Leader srv", rf.me, "rf.log", len(rf.log), "rf.currentTerm", rf.currentTerm, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
+    //fmt.Println("Leader srv", rf.me, "rf.log", len(rf.log), "rf.currentTerm", rf.currentTerm, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
     for idx := 0; idx < len(rf.peers); idx++ {
         if idx != rf.me {
             rf.nextIndex[idx]  = len(rf.log)
@@ -587,7 +581,7 @@ func (rf *Raft) ActAsLeader() {
                             }
                             //logIdx = Min(rf.nextIndex[server] - 1, len(rf.log) - 1)
                             logIdx = rf.nextIndex[server] - 1
-							fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex",logIdx,"rf.log",len(rf.log))
+							//fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex",logIdx,"rf.log",len(rf.log))
                             args := &AppendEntriesArgs {
                                 LeadersTerm  : currentTerm                ,
                                 LeaderId     : rf.me                      ,
@@ -669,7 +663,7 @@ func (rf *Raft) ActAsLeader() {
 	                rf.currentTerm = highestTermSeen
                 	rf.votedFor = -1
                     rf.persist()
-            	    fmt.Println("Leader: srv", rf.me, "Found a srv with higer term")
+            	    //fmt.Println("Leader: srv", rf.me, "Found a srv with higer term")
     			}
 	            rf.mu.Unlock()
 	            return
@@ -679,7 +673,7 @@ func (rf *Raft) ActAsLeader() {
     }
     rf.mu.Lock()
     if rf.status == FOLLOWER {
-        fmt.Println("Leader: srv", rf.me, "becoming a follower")
+        //fmt.Println("Leader: srv", rf.me, "becoming a follower")
         go rf.ActAsFollower()
     }
     rf.mu.Unlock()
@@ -687,7 +681,7 @@ func (rf *Raft) ActAsLeader() {
 }
 
 func (rf *Raft) ActAsFollower() {
-    fmt.Println("Follower srv ", rf.me)
+    //fmt.Println("Follower srv ", rf.me)
     rf.mu.Lock()
     rf.electionTimer = time.Now()
     rf.mu.Unlock()
@@ -719,7 +713,7 @@ func (rf *Raft) ActAsFollower() {
 }
 
 func (rf *Raft) ActAsCandidate() {
-    fmt.Println("Candidate srv ", rf.me)
+    //fmt.Println("Candidate srv ", rf.me)
 	for {
         rf.mu.Lock()
 
@@ -795,10 +789,10 @@ func (rf *Raft) ActAsCandidate() {
     		    	rf.status = FOLLOWER
                     rf.persist()
     		        //go rf.ActAsFollower()
-                    fmt.Println("Candidate: srv", rf.me, "found a server with higher term")
+                    //fmt.Println("Candidate: srv", rf.me, "found a server with higher term")
         		} else if rf.status == CANDIDATE && numVotesReceived > quorum {
 			        rf.status = LEADER
-                    fmt.Println("Candidate: srv", rf.me, "becoming leader")
+                    //fmt.Println("Candidate: srv", rf.me, "becoming leader")
 		            go rf.ActAsLeader()
                 }
                 //}
@@ -814,7 +808,7 @@ func (rf *Raft) ActAsCandidate() {
 	}
     rf.mu.Lock()
 	if rf.status == FOLLOWER {
-        fmt.Println("Candidate: srv", rf.me,"becoming follower")
+        //fmt.Println("Candidate: srv", rf.me,"becoming follower")
 		go rf.ActAsFollower()
 	}
     rf.mu.Unlock()
@@ -873,7 +867,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.heartbeatTimer   = time.Now()
     //rf.logId = time.Now().UnixNano()
     rf.status = FOLLOWER
-    fmt.Println("Starting server", "me", rf.me, "log", rf.log, "electionTout", rf.electionTimeout, "heartbeatTout", rf.heartbeatTimeout, "status", rf.status)
+    //fmt.Println("Starting server", "me", rf.me, "log", rf.log, "electionTout", rf.electionTimeout, "heartbeatTout", rf.heartbeatTimeout, "status", rf.status)
     go rf.ActAsFollower()
 
 	return rf
