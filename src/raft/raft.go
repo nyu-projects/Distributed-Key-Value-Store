@@ -241,12 +241,30 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 	} else if args.PrevLogIndex > len(rf.log)-1 {
         //fmt.Println("AppendEntries srv:", rf.me, "Case 2") 
+        //
+        if args.LeadersTerm > rf.currentTerm {
+            rf.votedFor = -1
+			rf.currentTerm  = args.LeadersTerm
+			rf.persist()
+        }
+        rf.status     = FOLLOWER
+        rf.electionTimer = time.Now()
+        //
         reply.ConflictEntryIdx = len(rf.log)
         reply.ConflictTerm	   = -1
         reply.Term    = rf.currentTerm
         reply.Success = false
     } else if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
         //fmt.Println("AppendEntries srv:", rf.me, "Case 3")
+        //
+        if args.LeadersTerm > rf.currentTerm {
+            rf.votedFor = -1
+            rf.currentTerm  = args.LeadersTerm
+            rf.persist()
+        }
+        rf.status     = FOLLOWER
+        rf.electionTimer = time.Now()
+        //
         firstIdxWithTerm := args.PrevLogIndex
         for firstIdxWithTerm > 0 {
             if rf.log[firstIdxWithTerm-1].Term != rf.log[firstIdxWithTerm].Term {
