@@ -49,10 +49,11 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 					//fmt.Println("Schedule: doTaskArgs", doTaskArgs)
 					var reply struct{}
 					ok := call(w, "Worker.DoTask", doTaskArgs, &reply)
-					go func() {
-						freeMachineChan <- w
-					}()
-					if ok {
+                    if ok {
+    					go func() {
+	    					freeMachineChan <- w
+		    			}()
+
 						wg.Done()
 						break
 					}
@@ -78,10 +79,11 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 					//fmt.Println("Schedule: doTaskArgs", doTaskArgs)
 					var reply struct{}
                     ok := call(w, "Worker.DoTask", doTaskArgs, &reply)
-					go func() {
-						freeMachineChan <- w
-					}()
                     if ok {
+		    			go func() {
+	    					freeMachineChan <- w
+    					}()
+
 						wg.Done()
                         break
                     }
