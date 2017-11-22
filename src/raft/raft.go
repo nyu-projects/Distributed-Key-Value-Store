@@ -825,6 +825,7 @@ func (rf *Raft) ActAsCandidate() {
                     //fmt.Println("Candidate: srv", rf.me, "found a server with higher term")
         		} else if rf.status == CANDIDATE && numVotesReceived > quorum {
 			        rf.status = LEADER
+                    rf.leaderId = rf.me
                     //fmt.Println("Candidate: srv", rf.me, "becoming leader")
 		            go rf.ActAsLeader()
                 }
