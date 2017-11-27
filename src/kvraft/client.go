@@ -37,15 +37,16 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) string {
+    //fmt.Println("Client: ", ck.clientId, " key:", key)
 	opid := nrand()
     for {
         args := GetArgs{Key         : key,
                  		OpId        : opid,
                  		ClientId    : ck.clientId}
         reply := GetReply{}
-
+        fmt.Println("Client: ", ck.clientId, "Sending Get, args: ", args)
         ok := ck.servers[ck.leaderId].Call("RaftKV.Get", &args, &reply)
-		fmt.Println("Client: ", ck.clientId, "Sent Get, args: ", args, ", reply: ", reply)
+        fmt.Println("Client: ", ck.clientId, "Get, reply: ", reply)
         if ok {
             if reply.WrongLeader {
                 ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
@@ -58,6 +59,8 @@ func (ck *Clerk) Get(key string) string {
 					ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
 				}
             }
+        } else {
+            ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
         }
     }
 }
@@ -69,6 +72,7 @@ func (ck *Clerk) Get(key string) string {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
+    //fmt.Println("Client: ", ck.clientId, " key:", key, " value:", value, " op:", op)
 	opid := nrand()
     for {
         args := PutAppendArgs{Key         : key,
@@ -78,8 +82,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
                    			  ClientId    : ck.clientId}
         reply := PutAppendReply{}
 
+        fmt.Println("Client: ", ck.clientId, "Sent PutAppend, args: ", args)
         ok := ck.servers[ck.leaderId].Call("RaftKV.PutAppend", &args, &reply)
-		fmt.Println("Client: ", ck.clientId, "Sent PutAppend, args: ", args, ", reply: ", reply)
+		fmt.Println("Client: ", ck.clientId, "PutAppend, reply: ", reply)
 
         if ok {
             if reply.WrongLeader {
@@ -91,6 +96,8 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
                     ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
                 }
             }
+        } else {
+            ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
         }
     }
 }
