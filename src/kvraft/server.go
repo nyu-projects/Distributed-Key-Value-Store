@@ -9,6 +9,8 @@ import (
 	"strings"
 	"fmt"
     "time"
+    "math"
+    "bytes"
 )
 
 const Debug = 0
@@ -42,13 +44,20 @@ type RaftKV struct {
 	me			    int
 	rf			    *raft.Raft
 	applyCh		    chan raft.ApplyMsg
-//	leaderCh	    chan raft.ApplyMsg
 	clientReqMap	map[int64]int64
     applyIdx        int
+	applyTerm		int
 
 	maxraftstate    int // snapshot if log grows this big
 
     kvMap		    map[string][]string
+}
+
+type PersistSnapshotData struct {
+    LastIncIdx		int
+	LastIncTerm		int
+    KvMap		    map[string][]string
+	ClientReqMap	map[int64]int64
 }
 
 func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
@@ -260,6 +269,36 @@ func (kv *RaftKV) Kill() {
 	// Your code here, if desired.
 }
 
+
+func (kv *RaftKV) snapshotPersist() {
+    w := new(bytes.Buffer)
+    e := gob.NewEncoder(w)
+
+    pData := PersistSnapshotData{kv.applyIdx, kv.applyTerm, kv.kvMap, kv.clientReqMap}
+    e.Encode(pData)
+    fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.ApplyIdx, " pData.ApplyTerm:", pData.ApplyTerm)
+    data := w.Bytes()
+    persister.SaveSnapshot(data)
+}
+
+// restore previously persisted state.
+func (kv *RaftKV) readSnapshotPersist(data []byte) bool {
+    var pData PersistSnapshotData
+    r := bytes.NewBuffer(data)
+    d := gob.NewDecoder(r)
+    d.Decode(&pData)
+    if data == nil || len(data) < 1 { // bootstrap without any state?
+        return false
+    }
+	fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.ApplyIdx, " pData.ApplyTerm:", pData.ApplyTerm)
+	kv.applyIdx		= pData.ApplyIdx
+	kv.applyTerm	= pData.ApplyTerm
+	kv.kvMap		= pData.KvMap
+	kv.clientReqMap	= pData.ClientReqMap
+    return true
+}
+
+
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
 // form the fault-tolerant key/value service.
@@ -274,7 +313,7 @@ func (kv *RaftKV) Kill() {
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *RaftKV {
 	// call gob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	gob.Register(Op{})
+	//gob.Register(Op{})
 
 	kv := new(RaftKV)
 	kv.me = me
@@ -284,10 +323,17 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
     kv.kvMap = make(map[string][]string)
 	kv.clientReqMap = make(map[int64]int64)
 	kv.applyCh = make(chan raft.ApplyMsg)
-    kv.applyIdx = 0
-	//kv.leaderCh = make(chan raft.ApplyMsg)
+
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+    ok := kv.readSnapshotPersist(persister.ReadSnapshot())
+    if !ok {
+		kv.applyIdx = 0
+		kv.applyTerm = 0
+	}
+
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-	// You may need initialization code here.
+	kv.rf.UpdateRaftState(kv.applyIdx, kv.applyTerm)
 
 	go func() {
 		fmt.Println("ApplyCh on srv", kv.me, " Starting to listen")
@@ -297,74 +343,49 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 			//fmt.Println("%%%%%%%%%%% kv Lock. srv:", kv.me, "Apply")
 			kv.mu.Lock()
             //fmt.Println("%%%%%%%%%%% kv Lock. srv:", kv.me, "Apply Lock Taken")
+			if kv.UseSnapshot {
+				kv.readSnapshotPersist(kv.Snapshot)
+				kv.snapshotPersist()
+			} else {
+            	kv.applyIdx = appMsg.Index
+				kv.applyTerm = appMsg.Term
+				nxtOp := appMsg.Command.(Op)
+				fmt.Println("ApplyCh on srv", kv.me, "nxtOp", nxtOp)
+            	//Duplicate Detection
+        	    opId, keyFound := kv.clientReqMap[nxtOp.ClientId]
+    	        if !(keyFound && opId == nxtOp.OpId) {
+	    			if nxtOp.Operation == "Put" {
+	    				kv.kvMap[nxtOp.Key] = []string{nxtOp.Value}
+			    	} else if nxtOp.Operation == "Append" {
+	                    value, keyFound := kv.kvMap[nxtOp.Key]
+        	            if keyFound {
+    	                    kv.kvMap[nxtOp.Key] = append(value, nxtOp.Value)
+	                    } else {
+                	        kv.kvMap[nxtOp.Key] = []string{nxtOp.Value}
+            	        }
+        	        }
+				    kv.clientReqMap[nxtOp.ClientId] = nxtOp.OpId
+	            }
+			}
 
-            kv.applyIdx = appMsg.Index
-			nxtOp := appMsg.Command.(Op)
-			fmt.Println("ApplyCh on srv", kv.me, "nxtOp", nxtOp)
-            //Duplicate Detection
-            opId, keyFound := kv.clientReqMap[nxtOp.ClientId]
-            if !(keyFound && opId == nxtOp.OpId) {
-    			if nxtOp.Operation == "Put" {
-	    			kv.kvMap[nxtOp.Key] = []string{nxtOp.Value}
-		    	} else if nxtOp.Operation == "Append" {
-                    value, keyFound := kv.kvMap[nxtOp.Key]
-                    if keyFound {
-                        kv.kvMap[nxtOp.Key] = append(value, nxtOp.Value)
-                    } else {
-                        kv.kvMap[nxtOp.Key] = []string{nxtOp.Value}
-                    }
-                }
-			    kv.clientReqMap[nxtOp.ClientId] = nxtOp.OpId
-            }
 			//fmt.Println("%%%%%%%%%%% kv Unlock. srv:", kv.me, "Apply")
 			kv.mu.Unlock()
-
-//			_, isLeader := kv.rf.GetState()
-//			if isLeader {
-//				kv.leaderCh <- appMsg
-//			}
         }
 	}()
+
+    go func(){
+		if maxraftstate != -1 {
+	        for {
+				kv.mu.Lock()
+	            if (math.Abs(len(persister.ReadRaftState()) - maxraftstate) / maxraftstate) < 0.05 {
+					kv.snapshotPersist()
+
+					kv.rf.DiscardOldLogs(kv.applyIdx, kv.applyTerm)
+				}
+				kv.mu.Unlock()
+	        }
+		}
+    }()
+
 	return kv
 }
-
-/*
-        for {
-            appMsg := <-kv.leaderCh
-            if appMsg.Index == index {
-                nxtOp := appMsg.Command.(Op)
-                if nxtOp.OpId == args.OpId && nxtOp.ClientId == args.ClientId {
-                    applyIdxChan <- true
-                } else {
-                    applyIdxChan <- false
-                    //Not needed
-                    //kv.leaderCh <- appMsg
-                }
-                fmt.Println("Get on ", kv.me, "index:", index, " Op:", nxtOp, "Breaking Off")
-                break
-            } else {
-                kv.leaderCh <- appMsg
-                fmt.Println("Get on ", kv.me, "index:", index, " AppMsg: ", appMsg, "Putting Back")
-            }
-        }
-*/
-/*
-        for {
-            appMsg := <-kv.leaderCh
-            if appMsg.Index == index {
-                nxtOp := appMsg.Command.(Op)
-                if nxtOp.OpId == args.OpId && nxtOp.ClientId == args.ClientId {
-                    applyIdxChan <- true
-                } else {
-                    applyIdxChan <- false
-                    //Not needed
-                    //kv.leaderCh <- appMsg
-                }
-                fmt.Println("Get on ", kv.me, "index:", index, " Op:", nxtOp, "Breaking Off")
-                break
-            } else {
-                kv.leaderCh <- appMsg
-                fmt.Println("Get on ", kv.me, "index:", index, " AppMsg: ", appMsg, "Putting Back")
-            }
-        }
-*/
