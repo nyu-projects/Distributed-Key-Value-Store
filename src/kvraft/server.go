@@ -9,7 +9,7 @@ import (
 	"strings"
 	"fmt"
     "time"
-    "math"
+//    "math"
     "bytes"
 )
 
@@ -47,6 +47,9 @@ type RaftKV struct {
 	clientReqMap	map[int64]int64
     applyIdx        int
 	applyTerm		int
+//    sentIdx         int
+//    sentTerm        int
+    persister       *raft.Persister
 
 	maxraftstate    int // snapshot if log grows this big
 
@@ -117,23 +120,31 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
         for {
 			//fmt.Println("*********** kv Lock. srv:", kv.me, "GetWaitLoop")
             kv.mu.Lock()
-			fmt.Println("*********** Get Wating on ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
+			fmt.Println("*********** Get Waiting on ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
             newterm, isCurrLeader := kv.rf.GetState()
             idxApplied := (kv.applyIdx >= index)
 			//fmt.Println("*********** kv Unlock. srv:", kv.me, "GetWaitLoop")
             kv.mu.Unlock()
             if idxApplied {
-        	    appMsg, ok := kv.rf.GetLogAtIndex(index)
-    	        if ok {
-	                nxtOp := appMsg.Command.(Op)
-                	if nxtOp.OpId == args.OpId && nxtOp.ClientId == args.ClientId {
-                	    applyIdxChan <- true
-            	    } else {
-        	            applyIdxChan <- false
-    	            }
-		            fmt.Println("Get on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
-	                break
-	            }
+				//if index < kv.sentIdx {
+				//	applyIdxChan <- true
+				//} else {
+        	    	appMsg, ok, logCutoff := kv.rf.GetLogAtIndex(index)
+    	        	if ok {
+	                	nxtOp := appMsg.Command.(Op)
+                		if nxtOp.OpId == args.OpId && nxtOp.ClientId == args.ClientId {
+                	    	applyIdxChan <- true
+            	    	} else {
+        	           		applyIdxChan <- false
+    	            	}
+		            	fmt.Println("Get on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+	                	break
+	            	} else if logCutoff {
+                        fmt.Println("Get on ", kv.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        applyIdxChan <- false
+                        break
+                    }
+				//}
 			} else if (newterm != term || !isCurrLeader) {
                 applyIdxChan <- false
                 break
@@ -156,6 +167,11 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
             reply.WrongLeader = false
             reply.Err         = ErrNoKey
 		}
+//        if index > kv.sentIdx {
+//            kv.sentIdx = index
+//            appMsg, _ := kv.rf.GetLogAtIndex(index)
+//            kv.sentTerm = appMsg.Term
+//        }
 	} else {
 		reply.WrongLeader = false
 		reply.Err		  = ErrNoConcensus
@@ -223,17 +239,25 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			//fmt.Println("########### kv Unlock. srv:", kv.me, "PutAppendWaitLoop")
             kv.mu.Unlock()
             if idxApplied {
-                appMsg, ok := kv.rf.GetLogAtIndex(index)
-                if ok {
-                    nxtOp := appMsg.Command.(Op)
-        	        if nxtOp.OpId == args.OpId && nxtOp.ClientId == args.ClientId {
-    	                applyIdxChan <- true
-	                } else {
-    					applyIdxChan <- false
-        	        }
-	                fmt.Println("PutAppend on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
-    	            break
-                }
+                //if index < kv.sentIdx {
+                //    applyIdxChan <- true
+                //} else {
+            	    appMsg, ok, logCutoff := kv.rf.GetLogAtIndex(index)
+        	        if ok {
+    	                nxtOp := appMsg.Command.(Op)
+	        	        if nxtOp.OpId == args.OpId && nxtOp.ClientId == args.ClientId {
+	    	                applyIdxChan <- true
+		                } else {
+    						applyIdxChan <- false
+	        	        }
+	    	            fmt.Println("PutAppend on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+    		            break
+	                } else if logCutoff {
+                        fmt.Println("PutAppend on ", kv.me, "index", index,  "Breaking Off. Log cutoff by snapshot")
+                        applyIdxChan <- false
+                        break
+                    }
+				//}
             } else if (newterm != term || !isCurrLeader) {
                 applyIdxChan <- false
                 break
@@ -249,6 +273,11 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
     if msgApplied {
 		reply.WrongLeader = false
 		reply.Err         = OK
+//        if index > kv.sentIdx {
+//            kv.sentIdx = index
+//			appMsg, _ := kv.rf.GetLogAtIndex(index)
+//			kv.sentTerm = appMsg.Term
+//        }
     } else {
         reply.WrongLeader = false
         reply.Err         = ErrNoConcensus
@@ -274,11 +303,16 @@ func (kv *RaftKV) snapshotPersist() {
     w := new(bytes.Buffer)
     e := gob.NewEncoder(w)
 
-    pData := PersistSnapshotData{kv.applyIdx, kv.applyTerm, kv.kvMap, kv.clientReqMap}
+	var pData PersistSnapshotData
+//	if isLeader {
+//		pData = PersistSnapshotData{kv.sentIdx, kv.sentTerm, kv.kvMap, kv.clientReqMap}
+//	} else {
+		pData = PersistSnapshotData{kv.applyIdx, kv.applyTerm, kv.kvMap, kv.clientReqMap}
+//	}
     e.Encode(pData)
-    fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.ApplyIdx, " pData.ApplyTerm:", pData.ApplyTerm)
+    fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
     data := w.Bytes()
-    persister.SaveSnapshot(data)
+    kv.persister.SaveSnapshot(data)
 }
 
 // restore previously persisted state.
@@ -290,9 +324,11 @@ func (kv *RaftKV) readSnapshotPersist(data []byte) bool {
     if data == nil || len(data) < 1 { // bootstrap without any state?
         return false
     }
-	fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.ApplyIdx, " pData.ApplyTerm:", pData.ApplyTerm)
-	kv.applyIdx		= pData.ApplyIdx
-	kv.applyTerm	= pData.ApplyTerm
+	fmt.Println("Read Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
+	kv.applyIdx		= pData.LastIncIdx
+	kv.applyTerm	= pData.LastIncTerm
+//    kv.sentIdx      = pData.LastIncIdx
+//    kv.sentTerm     = pData.LastIncTerm
 	kv.kvMap		= pData.KvMap
 	kv.clientReqMap	= pData.ClientReqMap
     return true
@@ -313,13 +349,14 @@ func (kv *RaftKV) readSnapshotPersist(data []byte) bool {
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *RaftKV {
 	// call gob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	//gob.Register(Op{})
+	gob.Register(Op{})
 
 	kv := new(RaftKV)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
+    kv.persister = persister
     kv.kvMap = make(map[string][]string)
 	kv.clientReqMap = make(map[int64]int64)
 	kv.applyCh = make(chan raft.ApplyMsg)
@@ -328,8 +365,10 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	defer kv.mu.Unlock()
     ok := kv.readSnapshotPersist(persister.ReadSnapshot())
     if !ok {
-		kv.applyIdx = 0
-		kv.applyTerm = 0
+		kv.applyIdx  = -1
+		kv.applyTerm = -1
+//		kv.sentIdx	 = -1
+//		kv.sentTerm	 = -1
 	}
 
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
@@ -343,12 +382,14 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 			//fmt.Println("%%%%%%%%%%% kv Lock. srv:", kv.me, "Apply")
 			kv.mu.Lock()
             //fmt.Println("%%%%%%%%%%% kv Lock. srv:", kv.me, "Apply Lock Taken")
-			if kv.UseSnapshot {
-				kv.readSnapshotPersist(kv.Snapshot)
+			if appMsg.UseSnapshot {
+                fmt.Println("Got new snapshot on srv", kv.me, "Applying")
+				kv.readSnapshotPersist(appMsg.Snapshot)
 				kv.snapshotPersist()
 			} else {
             	kv.applyIdx = appMsg.Index
 				kv.applyTerm = appMsg.Term
+
 				nxtOp := appMsg.Command.(Op)
 				fmt.Println("ApplyCh on srv", kv.me, "nxtOp", nxtOp)
             	//Duplicate Detection
@@ -377,12 +418,20 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		if maxraftstate != -1 {
 	        for {
 				kv.mu.Lock()
-	            if (math.Abs(len(persister.ReadRaftState()) - maxraftstate) / maxraftstate) < 0.05 {
-					kv.snapshotPersist()
-
-					kv.rf.DiscardOldLogs(kv.applyIdx, kv.applyTerm)
+                ratio := float64(persister.RaftStateSize()) / float64(maxraftstate)
+	            if ratio > 0.95 {
+                    fmt.Println("Snapshot thread: srv:", kv.me, "raftStateSize:", persister.RaftStateSize(), "maxraftstate", maxraftstate, "ratio", ratio)
+                    fmt.Println("Snapshot thread: srv:", kv.me, "applyIdx:", kv.applyIdx, "applyTerm:", kv.applyTerm)
+//					if isLeader {
+//						kv.snapshotPersist(true)
+//						kv.rf.DiscardOldLogs(kv.sentIdx, kv.sentTerm)
+//					} else {
+                        kv.snapshotPersist()
+                        kv.rf.DiscardOldLogs(kv.applyIdx, kv.applyTerm)
+//					}
 				}
 				kv.mu.Unlock()
+                time.Sleep(time.Millisecond)
 	        }
 		}
     }()
