@@ -66,6 +66,8 @@ type Raft struct {
     votedFor            int             //candidateId that received vote in the current term
     log                 []LogEntry      //log entries. each entry has command and term when entry was received by leader
     indexOffset         int             //
+    prevLogIdx          int             //
+    prevLogTerm         int             //
 
     //volatile on all servers
     commitIndex         int             //index of highest log entry known to be committed
@@ -133,7 +135,9 @@ func (rf *Raft) DiscardOldLogs(LastIncIdx int, LastIncTerm int) {
     // 101 102 103 ... 120
     // 0   1   2   ... 19
     //cutIdx = 120 - 100 = 20
-	if cutIdx > 0 {
+	if cutIdx > 0 && cutIdx < len(rf.log) {
+        rf.prevLogIdx = LastIncIdx
+        rf.prevLogTerm  = LastIncTerm
 		fmt.Println("Discarding Old Log on srv:", rf.me, "Before length:", rf.log, "Old IndexOffset", rf.indexOffset, "cutIdx:", cutIdx)
 		rf.indexOffset = LastIncIdx
     	rf.log = rf.log[cutIdx:]
@@ -144,10 +148,12 @@ func (rf *Raft) DiscardOldLogs(LastIncIdx int, LastIncTerm int) {
 }
 
 type PersistData struct {
-    CurrentTerm int
-    VotedFor    int
-    IndexOffset int
-    Log         []LogEntry
+    CurrentTerm     int
+    VotedFor        int
+    IndexOffset     int
+    PrevLogIdx      int
+    PrevLogTerm     int
+    Log             []LogEntry
 }
 
 // save Raft's persistent state to stable storage,
@@ -157,7 +163,7 @@ func (rf *Raft) persist() {
 	// Your code here (2C).
 	w := new(bytes.Buffer)
 	e := gob.NewEncoder(w)
-    pData := PersistData{rf.currentTerm, rf.votedFor, rf.indexOffset, rf.log}
+    pData := PersistData{rf.currentTerm, rf.votedFor, rf.indexOffset, rf.prevLogIdx, rf.prevLogTerm, rf.log}
 	e.Encode(pData)
     fmt.Println("Raft Persist: srv", rf.me, " pData ", len(pData.Log))
 	data := w.Bytes()
@@ -178,6 +184,8 @@ func (rf *Raft) readPersist(data []byte) bool {
     rf.currentTerm  = pData.CurrentTerm
     rf.votedFor     = pData.VotedFor
     rf.indexOffset  = pData.IndexOffset
+    rf.prevLogIdx   = pData.PrevLogIdx
+    rf.prevLogTerm  = pData.PrevLogTerm
     rf.log = make([]LogEntry, len(pData.Log))
     copy(rf.log, pData.Log)
     return true
@@ -221,11 +229,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if len(rf.log) > 0 {
         	grantVote = ((args.LastLogTerm > rf.log[len(rf.log)-1].Term) || ((args.LastLogTerm == rf.log[len(rf.log)-1].Term) && (ActualLastLogIndex >= len(rf.log)-1)))
 		} else {
-            _, _, snapshot := rf.readSnapshotPersist()
-            prevLogIdx  := snapshot.LastIncIdx
-            prevLogTerm := snapshot.LastIncTerm
+            //_, _, snapshot := rf.readSnapshotPersist()
+            //prevLogIdx  := snapshot.LastIncIdx
+            //prevLogTerm := snapshot.LastIncTerm
 
-			grantVote = ((args.LastLogTerm > prevLogTerm) || ((args.LastLogTerm == prevLogTerm) && (args.LastLogIndex >= prevLogIdx)))
+			grantVote = ((args.LastLogTerm > rf.prevLogTerm) || ((args.LastLogTerm == rf.prevLogTerm) && (args.LastLogIndex >= rf.prevLogIdx)))
 		}
         if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && (grantVote) {
             rf.status = FOLLOWER
@@ -252,11 +260,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         if len(rf.log) > 0 {
             grantVote = ((args.LastLogTerm > rf.log[len(rf.log)-1].Term) || ((args.LastLogTerm == rf.log[len(rf.log)-1].Term) && (ActualLastLogIndex >= len(rf.log)-1)))
         } else {
-            _, _, snapshot := rf.readSnapshotPersist()
-            prevLogIdx  := snapshot.LastIncIdx
-            prevLogTerm := snapshot.LastIncTerm
+            //_, _, snapshot := rf.readSnapshotPersist()
+            //prevLogIdx  := snapshot.LastIncIdx
+            //prevLogTerm := snapshot.LastIncTerm
 
-            grantVote = ((args.LastLogTerm > prevLogTerm) || ((args.LastLogTerm == prevLogTerm) && (args.LastLogIndex >= prevLogIdx)))
+            grantVote = ((args.LastLogTerm > rf.prevLogTerm) || ((args.LastLogTerm == rf.prevLogTerm) && (args.LastLogIndex >= rf.prevLogIdx)))
         }
 
         if grantVote {
@@ -340,10 +348,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         }
 
 		if ActualPrevLogIndex == -1 {
-        	_, _, snapshot := rf.readSnapshotPersist()
+        	//_, _, snapshot := rf.readSnapshotPersist()
            	//prevLogIdx  := snapshot.LastIncIdx
-           	prevLogTerm := snapshot.LastIncTerm
-			if prevLogTerm == args.PrevLogTerm {
+           	//prevLogTerm := snapshot.LastIncTerm
+			if rf.prevLogTerm == args.PrevLogTerm {
 				rf.status     = FOLLOWER
 				rf.electionTimer = time.Now()
 
@@ -378,8 +386,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         if tentativeCommitIndex > rf.commitIndex {
             rf.commitIndex = tentativeCommitIndex
         }
-
+        fmt.Println("AppendEntries srv:", rf.me, "After snapshot: updated commitIdx to:", rf.commitIndex)
         go func() {
+            fmt.Println("AppendEntries srv:", rf.me, "After snapshot Sending all appmsgs. commitIndex", rf.commitIndex, "lastApplied", rf.lastApplied)
             for {
                 rf.nu.Lock()
                 rf.mu.Lock()
@@ -388,7 +397,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
                     rf.nu.Unlock()
                     break
                 }
-                rf.lastApplied += 1 
+                rf.lastApplied += 1
+                fmt.Println("AppendEntries srv:", rf.me, "After snapshot Sending ApplyMsg", "commitIndex", rf.commitIndex, "lastApplied", rf.lastApplied, "rf.log", rf.log)
+                fmt.Println("AppendEntries srv:", rf.me, "After snapshot Sending ApplyMsg", "actualIdx", getActualIdx(rf.lastApplied, rf.indexOffset), "log length:", len(rf.log))
                 appMsg := ApplyMsg {
                     Index       : rf.lastApplied,
                     Command     : rf.log[getActualIdx(rf.lastApplied, rf.indexOffset)].Log,
@@ -556,9 +567,15 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		rf.lastApplied = rf.indexOffset
 	}
 */
-
+    if rf.prevLogIdx >= args.LastIncludedIndex {
+        reply.Term = rf.currentTerm
+        rf.mu.Unlock()
+        return
+    }
+    rf.prevLogIdx   = args.LastIncludedIndex
+    rf.prevLogTerm  = args.LastIncludedTerm
 	rf.log = rf.log[:0]
-	rf.indexOffset = args.LastIncludedIndex
+	rf.indexOffset  = args.LastIncludedIndex
 
 	rf.commitIndex = rf.indexOffset
 	rf.lastApplied = rf.indexOffset
@@ -780,28 +797,30 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 								logIdx += 1
 							}
 
-							prevLogIdx := Min(rf.nextIndex[server]-1, getOffsetIdx(len(rf.log)-1, rf.indexOffset))
-                            if prevLogIdx < 0 {
-                                prevLogIdx = 0
+							pLogIdx := Min(rf.nextIndex[server]-1, getOffsetIdx(len(rf.log)-1, rf.indexOffset))
+                            if pLogIdx < 0 {
+                                pLogIdx = 0
                             }
 
-							var prevLogTerm int
-							if getActualIdx(prevLogIdx, rf.indexOffset) < 0 {
-								_, _, snapshot := rf.readSnapshotPersist()
-								prevLogIdx  = snapshot.LastIncIdx
-								prevLogTerm = snapshot.LastIncTerm
+							var pLogTerm int
+							if getActualIdx(pLogIdx, rf.indexOffset) < 0 {
+								//_, _, snapshot := rf.readSnapshotPersist()
+								//prevLogIdx  = snapshot.LastIncIdx
+								//prevLogTerm = snapshot.LastIncTerm
+                                pLogIdx  = rf.prevLogIdx
+                                pLogTerm = rf.prevLogTerm
 								fmt.Println("Start srv", rf.me, "Reading previdx and prevterm from snapshot")
 							} else {
-								prevLogTerm = rf.log[getActualIdx(prevLogIdx, rf.indexOffset)].Term
+								pLogTerm = rf.log[getActualIdx(pLogIdx, rf.indexOffset)].Term
 							}
 
-                            fmt.Println("Start: srv", rf.me, "For server", server, "PrevLogIndex",prevLogIdx, "PrevLogTerm", prevLogTerm,  "rf.log",len(rf.log))
+                            fmt.Println("Start: srv", rf.me, "For server", server, "PrevLogIndex", pLogIdx, "PrevLogTerm", pLogTerm, "rf.log", len(rf.log))
 
 						    args := &AppendEntriesArgs {
 					            LeadersTerm  : currentTerm                ,
 					            LeaderId     : rf.me                      ,
-					            PrevLogIndex : prevLogIdx				  ,
-					            PrevLogTerm  : prevLogTerm				  ,
+					            PrevLogIndex : pLogIdx				      ,
+					            PrevLogTerm  : pLogTerm				      ,
 					            LogEntries   : logEntryArray              ,
 					            LeaderCommit : rf.commitIndex             ,
 					            IsEmpty      : len(logEntryArray)==0}
@@ -1048,26 +1067,28 @@ func (rf *Raft) ActAsLeader() {
                                 logIdx += 1
                             }
 
-                            prevLogIdx := Min(rf.nextIndex[server]-1, getOffsetIdx(len(rf.log)-1, rf.indexOffset))
-                            if prevLogIdx < 0 {
-                                prevLogIdx = 0
+                            pLogIdx := Min(rf.nextIndex[server]-1, getOffsetIdx(len(rf.log)-1, rf.indexOffset))
+                            if pLogIdx < 0 {
+                                pLogIdx = 0
                             }
 
-                            var prevLogTerm int
-                            if getActualIdx(prevLogIdx, rf.indexOffset) < 0 {
-                                _, _, snapshot := rf.readSnapshotPersist()
-                                prevLogIdx  = snapshot.LastIncIdx
-                                prevLogTerm = snapshot.LastIncTerm
+                            var pLogTerm int
+                            if getActualIdx(pLogIdx, rf.indexOffset) < 0 {
+                                //_, _, snapshot := rf.readSnapshotPersist()
+                                //pLogIdx  = snapshot.LastIncIdx
+                                //pLogTerm = snapshot.LastIncTerm
+                                pLogIdx  = rf.prevLogIdx
+                                pLogTerm = rf.prevLogTerm
                             } else {
-                                prevLogTerm = rf.log[getActualIdx(prevLogIdx, rf.indexOffset)].Term
+                                pLogTerm = rf.log[getActualIdx(pLogIdx, rf.indexOffset)].Term
                             }
 
-							fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex",prevLogIdx,"rf.log",len(rf.log))
+							fmt.Println("Leader: srv", rf.me, "For server", server, "PrevLogIndex", pLogIdx, "rf.log", len(rf.log))
                             args := &AppendEntriesArgs {
                                 LeadersTerm  : currentTerm                ,
                                 LeaderId     : rf.me                      ,
-                                PrevLogIndex : prevLogIdx                 ,
-                                PrevLogTerm  : prevLogTerm				  ,
+                                PrevLogIndex : pLogIdx                    ,
+                                PrevLogTerm  : pLogTerm				      ,
                                 LogEntries   : logEntryArray              ,
                                 LeaderCommit : rf.commitIndex             ,
                                 IsEmpty      : len(logEntryArray)==0}
@@ -1150,13 +1171,14 @@ func (rf *Raft) ActAsLeader() {
                     rf.persist()
             	    fmt.Println("Leader: srv", rf.me, "Found a srv with higer term")
     			} else if rf.status == LEADER {
-                    N := rf.commitIndex
-
 					fmt.Println("Leader: srv", rf.me, "Current commitIndex:", rf.commitIndex)
+/*
+					N := rf.commitIndex
                     for {
                         N += 1
                         majority := 1
                         for idx := 0; idx < len(rf.peers); idx++ {
+                            fmt.Println("Leader: srv", rf.me, "Follower:", idx, "MatchIndex:", rf.matchIndex[idx])
                             if idx != rf.me && rf.matchIndex[idx] >= N {
                                 majority += 1
                             }
@@ -1168,6 +1190,21 @@ func (rf *Raft) ActAsLeader() {
                             N -= 1
                             break
                         }
+                    }
+*/
+					N := getOffsetIdx(len(rf.log)-1, rf.indexOffset)
+                    for N > rf.commitIndex {
+                        majority := 1
+                        for idx := 0; idx < len(rf.peers); idx++ {
+                            fmt.Println("Leader: srv", rf.me, "Follower:", idx, "MatchIndex:", rf.matchIndex[idx])
+                            if idx != rf.me && rf.matchIndex[idx] >= N {
+                                majority += 1
+                            }
+                        }
+                        if (majority > len(rf.peers)/2) && (rf.log[getActualIdx(N, rf.indexOffset)].Term == rf.currentTerm) {
+                            break
+                        }
+						N -= 1
                     }
 
 					fmt.Println("Leader: srv", rf.me, "Updating commitIndex to N:", N)
@@ -1275,9 +1312,11 @@ func (rf *Raft) ActAsCandidate() {
 				lastLogIdx  = getOffsetIdx(len(rf.log)-1, rf.indexOffset)
 				lastLogTerm = rf.log[len(rf.log)-1].Term
 			} else {
-            	_, _, snapshot := rf.readSnapshotPersist()
-            	lastLogIdx  = snapshot.LastIncIdx
-            	lastLogTerm = snapshot.LastIncTerm
+            	//_, _, snapshot := rf.readSnapshotPersist()
+            	//lastLogIdx  = snapshot.LastIncIdx
+            	//lastLogTerm = snapshot.LastIncTerm
+                lastLogIdx  = rf.prevLogIdx
+                lastLogTerm = rf.prevLogTerm
 			}
 
 		    args := &RequestVoteArgs{
@@ -1388,6 +1427,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
         rf.currentTerm = 0
         rf.votedFor    = -1
         rf.indexOffset = -1
+        rf.prevLogIdx   = -1
+        rf.prevLogTerm  = -1
         var v interface{}
         lg := LogEntry{
             Term : 0,
