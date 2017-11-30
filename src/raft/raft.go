@@ -695,7 +695,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                         Term : rf.currentTerm}
 
     rf.log = append(rf.log, currentEntry)
-    fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", len(rf.log), "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "ndexOffset:", rf.indexOffset)
+    fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", rf.log, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "indexOffset:", rf.indexOffset)
 	index := getOffsetIdx(len(rf.log)-1, rf.indexOffset)
 	term := rf.currentTerm
 	isLeader := true
@@ -956,6 +956,7 @@ func (rf *Raft) Kill() {
 func (rf *Raft) ActAsLeader() {
     rf.mu.Lock()
     fmt.Println("Leader srv", rf.me, "rf.log", len(rf.log), "rf.currentTerm", rf.currentTerm, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied)
+/*
     for idx := 0; idx < len(rf.peers); idx++ {
         if idx != rf.me {
             rf.nextIndex[idx]  = getOffsetIdx(len(rf.log), rf.indexOffset)
@@ -965,6 +966,7 @@ func (rf *Raft) ActAsLeader() {
             rf.matchIndex[idx] = getOffsetIdx(len(rf.log)-1, rf.indexOffset)
         }
     }
+*/
 	rf.mu.Unlock()
     for {
         rf.mu.Lock()
@@ -1379,7 +1381,19 @@ func (rf *Raft) ActAsCandidate() {
         		} else if rf.status == CANDIDATE && numVotesReceived > quorum {
 			        rf.status = LEADER
                     rf.leaderId = rf.me
-                    fmt.Println("Candidate: srv", rf.me, "becoming leader")
+					fmt.Println("Candidate: srv", rf.me, "becoming leader")
+
+    				for idx := 0; idx < len(rf.peers); idx++ {
+				        if idx != rf.me {
+				            rf.nextIndex[idx]  = getOffsetIdx(len(rf.log), rf.indexOffset)
+				            rf.matchIndex[idx] = 0
+				        } else {
+				            rf.nextIndex[idx]  = getOffsetIdx(len(rf.log), rf.indexOffset)
+				            rf.matchIndex[idx] = getOffsetIdx(len(rf.log)-1, rf.indexOffset)
+				        }
+				    }
+
+                    fmt.Println("Candidate: srv", rf.me, "Updated nextIndex and matchIndex for all servers to", getOffsetIdx(len(rf.log), rf.indexOffset), 0)
 		            go rf.ActAsLeader()
                 }
 
