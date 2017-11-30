@@ -7,7 +7,7 @@ import (
 	"raft"
 	"sync"
 	"strings"
-//	"fmt"
+	"fmt"
     "time"
 //    "math"
     "bytes"
@@ -69,16 +69,16 @@ type PersistSnapshotData struct {
 }
 
 func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
-	////fmt.Println("*********** kv Lock. srv:", kv.me, "Get1")
+	//fmt.Println("*********** kv Lock. srv:", kv.me, "Get1")
 	kv.mu.Lock()
-	//fmt.Println("Get on ", kv.me, "Starting args:", *args)
+	fmt.Println("Get on ", kv.me, "Starting args:", *args)
 	// Check leader
 	term, isLeader := kv.rf.GetState()
     if !isLeader {
 		reply.WrongLeader = true
 		reply.Err		  = ErrWrongLeader
-		//fmt.Println("Get on ", kv.me, " Not a Leader")
-		////fmt.Println("*********** kv Unlock. srv:", kv.me, "Get1")
+		fmt.Println("Get on ", kv.me, " Not a Leader")
+		//fmt.Println("*********** kv Unlock. srv:", kv.me, "Get1")
 		kv.mu.Unlock()
 		return
     }
@@ -95,8 +95,8 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
             reply.WrongLeader = false
             reply.Err         = ErrNoKey
         }
-		//fmt.Println("Get on ", kv.me, " Duplicate command ")
-		////fmt.Println("*********** kv Unlock. srv:", kv.me, "Get2")
+		fmt.Println("Get on ", kv.me, " Duplicate command ")
+		//fmt.Println("*********** kv Unlock. srv:", kv.me, "Get2")
 		kv.mu.Unlock()
 		return
 	}
@@ -107,7 +107,7 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 				Key             : args.Key}
 
 	index, term, isLeader := kv.rf.Start(getOp)
-	//fmt.Println("Get on ", kv.me, " Start Called, index: ", index, " Op:", getOp)
+	fmt.Println("Get on ", kv.me, " Start Called, index: ", index, " Op:", getOp)
 
 	if !isLeader {
 		reply.WrongLeader = true
@@ -121,12 +121,12 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 
 	go func () {
         for {
-			////fmt.Println("*********** kv Lock. srv:", kv.me, "GetWaitLoop")
+			//fmt.Println("*********** kv Lock. srv:", kv.me, "GetWaitLoop")
             kv.mu.Lock()
-			//fmt.Println("*********** Get Waiting on ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
+			fmt.Println("*********** Get Waiting on ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
             newterm, isCurrLeader := kv.rf.GetState()
             idxApplied := (kv.applyIdx >= index)
-			////fmt.Println("*********** kv Unlock. srv:", kv.me, "GetWaitLoop")
+			//fmt.Println("*********** kv Unlock. srv:", kv.me, "GetWaitLoop")
             kv.mu.Unlock()
             if idxApplied {
 				//if index < kv.sentIdx {
@@ -140,10 +140,10 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
             	    	} else {
         	           		applyIdxChan <- false
     	            	}
-		            	//fmt.Println("Get on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+		            	fmt.Println("Get on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
 	                	break
 	            	} else if logCutoff {
-                        //fmt.Println("Get on ", kv.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        fmt.Println("Get on ", kv.me, "index", index, "Breaking Off. Not removed by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -158,7 +158,7 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 
 	msgApplied := <-applyIdxChan
 
-	////fmt.Println("*********** kv Lock. srv:", kv.me, "Get2")
+	//fmt.Println("*********** kv Lock. srv:", kv.me, "Get2")
 	kv.mu.Lock()
 	if msgApplied {
 		value, keyFound := kv.kvMap[args.Key]
@@ -180,23 +180,23 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 		reply.Err		  = ErrNoConcensus
 	}
 
-	//fmt.Println("Get on ", kv.me, " args:", *args, " reply: ", *reply)
-	////fmt.Println("*********** kv Unlock. srv:", kv.me, "Get5")
+	fmt.Println("Get on ", kv.me, " args:", *args, " reply: ", *reply)
+	//fmt.Println("*********** kv Unlock. srv:", kv.me, "Get5")
 	kv.mu.Unlock()
 	return
 }
 
 func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	////fmt.Println("########### kv Lock. srv:", kv.me, "Put1")
+	//fmt.Println("########### kv Lock. srv:", kv.me, "Put1")
 	kv.mu.Lock()
-	//fmt.Println("PutAppend on ", kv.me, "Starting args:", *args)
+	fmt.Println("PutAppend on ", kv.me, "Starting args:", *args)
     // Check leader
 	term, isLeader := kv.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-		//fmt.Println("PutAppend on ", kv.me, " Not a Leader")
-		////fmt.Println("########### kv Unlock. srv:", kv.me, "Put1")
+		fmt.Println("PutAppend on ", kv.me, " Not a Leader")
+		//fmt.Println("########### kv Unlock. srv:", kv.me, "Put1")
 		kv.mu.Unlock()
         return
     }
@@ -206,8 +206,8 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
     if keyFound && opId == args.OpId {
 		reply.WrongLeader = false
 		reply.Err         = OK
-        //fmt.Println("PutAppend on ", kv.me, " Duplicate command ")
-		////fmt.Println("########### kv Unlock. srv:", kv.me, "Put2")
+        fmt.Println("PutAppend on ", kv.me, " Duplicate command ")
+		//fmt.Println("########### kv Unlock. srv:", kv.me, "Put2")
         kv.mu.Unlock()
         return
     }
@@ -219,7 +219,7 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 				Value			: args.Value}
 
     index, term, isLeader := kv.rf.Start(getOp)
-    //fmt.Println("PutAppend on ", kv.me, " Start Called, index: ", index, " Op:", getOp)
+    fmt.Println("PutAppend on ", kv.me, " Start Called, index: ", index, " Op:", getOp)
 
     if !isLeader {
         reply.WrongLeader = true
@@ -229,17 +229,17 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
     }
 
     applyIdxChan := make(chan bool)
-	////fmt.Println("########### kv Unlock. srv:", kv.me, "Put3")
+	//fmt.Println("########### kv Unlock. srv:", kv.me, "Put3")
 	kv.mu.Unlock()
 
     go func () {
         for {
-			////fmt.Println("########### kv Lock. srv:", kv.me, "PutAppendWaitLoop")
+			//fmt.Println("########### kv Lock. srv:", kv.me, "PutAppendWaitLoop")
             kv.mu.Lock()
-			//fmt.Println("########### PutAppend Waiting on ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
+			fmt.Println("########### PutAppend Waiting on ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
             newterm, isCurrLeader := kv.rf.GetState()
             idxApplied := (kv.applyIdx >= index)
-			////fmt.Println("########### kv Unlock. srv:", kv.me, "PutAppendWaitLoop")
+			//fmt.Println("########### kv Unlock. srv:", kv.me, "PutAppendWaitLoop")
             kv.mu.Unlock()
             if idxApplied {
                 //if index < kv.sentIdx {
@@ -253,10 +253,10 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		                } else {
     						applyIdxChan <- false
 	        	        }
-	    	            //fmt.Println("PutAppend on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+	    	            fmt.Println("PutAppend on ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
     		            break
 	                } else if logCutoff {
-                        //fmt.Println("PutAppend on ", kv.me, "index", index,  "Breaking Off. Log cutoff by snapshot")
+                        fmt.Println("PutAppend on ", kv.me, "index", index,  "Breaking Off. Log cutoff by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -271,7 +271,7 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
     msgApplied := <-applyIdxChan
 
-	////fmt.Println("########### kv Lock. srv:", kv.me, "Put2")
+	//fmt.Println("########### kv Lock. srv:", kv.me, "Put2")
 	kv.mu.Lock()
     if msgApplied {
 		reply.WrongLeader = false
@@ -286,8 +286,8 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
         reply.Err         = ErrNoConcensus
     }
 
-    //fmt.Println("Get on ", kv.me, " args:", *args, " reply: ", *reply)
-	////fmt.Println("########### kv Unlock. srv:", kv.me, "Put4")
+    fmt.Println("Get on ", kv.me, " args:", *args, " reply: ", *reply)
+	//fmt.Println("########### kv Unlock. srv:", kv.me, "Put4")
     kv.mu.Unlock()
     return
 }
@@ -312,7 +312,7 @@ func (kv *RaftKV) snapshotPersist() {
 	var pData PersistSnapshotData
 	pData = PersistSnapshotData{kv.applyIdx, kv.applyTerm, kv.kvMap, kv.clientReqMap}
     e.Encode(pData)
-    //fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
+    fmt.Println("Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
     data := w.Bytes()
     kv.persister.SaveSnapshot(data)
 }
@@ -326,7 +326,7 @@ func (kv *RaftKV) readSnapshotPersist(data []byte) bool {
     if data == nil || len(data) < 1 { // bootstrap without any state?
         return false
     }
-	//fmt.Println("Read Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
+	fmt.Println("Read Snapshot Persist: srv", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
 	kv.applyIdx		= pData.LastIncIdx
 	kv.applyTerm	= pData.LastIncTerm
 
@@ -374,11 +374,11 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf.UpdateRaftState(kv.applyIdx, kv.applyTerm)
 
 	go func() {
-		//fmt.Println("ApplyCh on srv", kv.me, " Starting to listen")
+		fmt.Println("ApplyCh on srv", kv.me, " Starting to listen")
         for {
             kv.mu.Lock()
             if kv.status != UP {
-                //fmt.Println("Ending kvserver:", kv.me, "listening thread")
+                fmt.Println("Ending kvserver:", kv.me, "listening thread")
                 kv.mu.Unlock()
                 break
             }
@@ -386,7 +386,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 			appMsg := <-kv.applyCh
 			kv.mu.Lock()
 			if appMsg.UseSnapshot {
-                //fmt.Println("Got new snapshot on srv", kv.me, "Applying")
+                fmt.Println("Got new snapshot on srv", kv.me, "Applying")
 				kv.readSnapshotPersist(appMsg.Snapshot)
 				kv.snapshotPersist()
 			} else {
@@ -394,7 +394,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 				kv.applyTerm = appMsg.Term
 
 				nxtOp := appMsg.Command.(Op)
-				//fmt.Println("ApplyCh on srv", kv.me, "nxtOp", nxtOp)
+				fmt.Println("ApplyCh on srv", kv.me, "nxtOp", nxtOp)
             	//Duplicate Detection
         	    opId, keyFound := kv.clientReqMap[nxtOp.ClientId]
     	        if !(keyFound && opId == nxtOp.OpId) {
@@ -421,15 +421,15 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 				kv.mu.Lock()
 
 	            if kv.status != UP {
-    	            //fmt.Println("Ending kvserver:", kv.me, "snapshot thread. ending")
+    	            fmt.Println("Ending kvserver:", kv.me, "snapshot thread. ending")
         	        kv.mu.Unlock()
             	    break
             	}
 
                 ratio := float64(persister.RaftStateSize()) / float64(maxraftstate)
 	            if ratio > 0.95 {
-                    //fmt.Println("Snapshot thread: srv:", kv.me, "raftStateSize:", persister.RaftStateSize(), "maxraftstate", maxraftstate, "ratio", ratio)
-                    //fmt.Println("Snapshot thread: srv:", kv.me, "applyIdx:", kv.applyIdx, "applyTerm:", kv.applyTerm)
+                    fmt.Println("Snapshot thread: srv:", kv.me, "raftStateSize:", persister.RaftStateSize(), "maxraftstate", maxraftstate, "ratio", ratio)
+                    fmt.Println("Snapshot thread: srv:", kv.me, "applyIdx:", kv.applyIdx, "applyTerm:", kv.applyTerm)
                     kv.snapshotPersist()
                     kv.rf.DiscardOldLogs(kv.applyIdx, kv.applyTerm)
 				}
