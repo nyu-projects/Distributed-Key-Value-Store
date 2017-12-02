@@ -13,6 +13,7 @@ import "crypto/rand"
 import "math/big"
 import "shardmaster"
 import "time"
+import "fmt"
 
 //
 // which shard is a key in?
@@ -40,6 +41,8 @@ type Clerk struct {
 	config   shardmaster.Config
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
+    clientId    int64
+    leaderId    int
 }
 
 //
@@ -56,6 +59,10 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck.sm = shardmaster.MakeClerk(masters)
 	ck.make_end = make_end
 	// You'll have to add code here.
+
+    ck.clientId = nrand()
+    ck.leaderId = 0
+
 	return ck
 }
 
@@ -66,9 +73,11 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 // You will have to modify this function.
 //
 func (ck *Clerk) Get(key string) string {
+    opid := nrand()
 	args := GetArgs{}
 	args.Key = key
-
+    args.OpId = opid
+    args.ClientId = ck.clientId
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
@@ -77,7 +86,9 @@ func (ck *Clerk) Get(key string) string {
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply GetReply
+                fmt.Println("Client: ", ck.clientId, "Sending Get, args: ", args)
 				ok := srv.Call("ShardKV.Get", &args, &reply)
+                fmt.Println("Client: ", ck.clientId, "Get, reply: ", reply)
 				if ok && reply.WrongLeader == false && (reply.Err == OK || reply.Err == ErrNoKey) {
 					return reply.Value
 				}
@@ -99,11 +110,13 @@ func (ck *Clerk) Get(key string) string {
 // You will have to modify this function.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
+    opid := nrand()
 	args := PutAppendArgs{}
 	args.Key = key
 	args.Value = value
 	args.Op = op
-
+    args.OpId     = opid
+    args.ClientId = ck.clientId
 
 	for {
 		shard := key2shard(key)
@@ -112,7 +125,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply PutAppendReply
+                fmt.Println("Client: ", ck.clientId, "Sending PutAppend, args: ", args)
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
+                fmt.Println("Client: ", ck.clientId, "PutAppend, reply: ", reply)
 				if ok && reply.WrongLeader == false && reply.Err == OK {
 					return
 				}
