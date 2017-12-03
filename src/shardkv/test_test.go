@@ -545,6 +545,7 @@ func TestUnreliable2(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
 //
 // optional test to see whether servers are deleting
 // shards for which they are no longer responsible.
@@ -828,3 +829,4 @@ func TestChallenge2Partial(t *testing.T) {
 
 	fmt.Printf("  ... Passed\n")
 }
+*/
