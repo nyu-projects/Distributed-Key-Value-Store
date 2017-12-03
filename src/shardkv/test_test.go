@@ -5,7 +5,7 @@ import "strconv"
 import "time"
 import "fmt"
 import "sync/atomic"
-import "math/rand"
+//import "math/rand"
 
 func check(t *testing.T, ck *Clerk, key string, value string) {
 	v := ck.Get(key)

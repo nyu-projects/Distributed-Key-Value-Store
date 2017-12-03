@@ -14,6 +14,7 @@ import "math/big"
 import "shardmaster"
 import "time"
 import "fmt"
+import "sync"
 
 //
 // which shard is a key in?
@@ -37,6 +38,7 @@ func nrand() int64 {
 }
 
 type Clerk struct {
+    mu           sync.Mutex
 	sm       *shardmaster.Clerk
 	config   shardmaster.Config
 	make_end func(string) *labrpc.ClientEnd
@@ -74,11 +76,13 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 // You will have to modify this function.
 //
 func (ck *Clerk) Get(key string) string {
+    ck.mu.Lock()
 	args := GetArgs{}
 	args.Key = key
     ck.opId++
     args.OpId = ck.opId
     args.ClientId = ck.clientId
+    ck.mu.Unlock()
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
@@ -110,6 +114,7 @@ func (ck *Clerk) Get(key string) string {
 // You will have to modify this function.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
+    ck.mu.Lock()
 	args := PutAppendArgs{}
 	args.Key = key
 	args.Value = value
@@ -117,7 +122,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
     ck.opId++
     args.OpId     = ck.opId
     args.ClientId = ck.clientId
-
+    ck.mu.Unlock()
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
