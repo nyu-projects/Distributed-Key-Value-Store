@@ -6,7 +6,7 @@ import (
  	"labrpc"
  	"sync"
  	"encoding/gob"
-	"fmt"
+//	"fmt"
     "time"
 	"sort"
 )
@@ -50,13 +50,13 @@ type Op struct {
 
 func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
     sm.mu.Lock()
-    fmt.Println("Join on ", sm.me, "Join args:", *args)
+    //fmt.Println("Join on ", sm.me, "Join args:", *args)
     // Check leader
     term, isLeader := sm.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-        fmt.Println("Join on ", sm.me, " Not a Leader")
+        //fmt.Println("Join on ", sm.me, " Not a Leader")
         sm.mu.Unlock()
         return
     }
@@ -66,7 +66,7 @@ func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
     if keyFound && opId == args.OpId {
 		reply.WrongLeader = false
 		reply.Err		  = OK
-        fmt.Println("Join on ", sm.me, " Duplicate command ")
+        //fmt.Println("Join on ", sm.me, " Duplicate command ")
         sm.mu.Unlock()
         return
     }
@@ -77,7 +77,7 @@ func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
                  Servers         : args.Servers}
 
     index, term, isLeader := sm.rf.Start(joinOp)
-    fmt.Println("Join on ", sm.me, " Start Called, index: ", index, " Op:", joinOp)
+    //fmt.Println("Join on ", sm.me, " Start Called, index: ", index, " Op:", joinOp)
 
     if !isLeader {
         reply.WrongLeader = true
@@ -92,7 +92,7 @@ func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
     go func () {
         for {
             sm.mu.Lock()
-            fmt.Println("*********** Join Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", joinOp)
+            //fmt.Println("*********** Join Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", joinOp)
             newterm, isCurrLeader := sm.rf.GetState()
             idxApplied := (sm.applyIdx >= index)
             sm.mu.Unlock()
@@ -105,10 +105,10 @@ func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
                         } else {
                             applyIdxChan <- false
                         }
-                        fmt.Println("Join on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
+                        //fmt.Println("Join on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
                         break
                     } else if logCutoff {
-                        fmt.Println("Join on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        //fmt.Println("Join on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -131,20 +131,20 @@ func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
         reply.Err         = ErrNoConcensus
     }
 
-    fmt.Println("Join on ", sm.me, " args:", *args, " reply: ", *reply)
+    //fmt.Println("Join on ", sm.me, " args:", *args, " reply: ", *reply)
     sm.mu.Unlock()
     return
 }
 
 func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
     sm.mu.Lock()
-    fmt.Println("Leave on ", sm.me, "Leave args:", *args)
+    //fmt.Println("Leave on ", sm.me, "Leave args:", *args)
     // Check leader
     term, isLeader := sm.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-        fmt.Println("Leave on ", sm.me, " Not a Leader")
+        //fmt.Println("Leave on ", sm.me, " Not a Leader")
         sm.mu.Unlock()
         return
     }
@@ -154,7 +154,7 @@ func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
     if keyFound && opId == args.OpId {
 		reply.WrongLeader = false
 		reply.Err		  = OK
-        fmt.Println("Leave on ", sm.me, " Duplicate command ")
+        //fmt.Println("Leave on ", sm.me, " Duplicate command ")
         sm.mu.Unlock()
         return
     }
@@ -165,7 +165,7 @@ func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
                   GIDs            : args.GIDs}
 
     index, term, isLeader := sm.rf.Start(leaveOp)
-    fmt.Println("Leave on ", sm.me, " Start Called, index: ", index, " Op:", leaveOp)
+    //fmt.Println("Leave on ", sm.me, " Start Called, index: ", index, " Op:", leaveOp)
 
     if !isLeader {
         reply.WrongLeader = true
@@ -180,7 +180,7 @@ func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
     go func () {
         for {
             sm.mu.Lock()
-            fmt.Println("*********** Leave Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", leaveOp)
+            //fmt.Println("*********** Leave Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", leaveOp)
             newterm, isCurrLeader := sm.rf.GetState()
             idxApplied := (sm.applyIdx >= index)
             sm.mu.Unlock()
@@ -193,10 +193,10 @@ func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
                         } else {
                             applyIdxChan <- false
                         }
-                        fmt.Println("Leave on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
+                        //fmt.Println("Leave on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
                         break
                     } else if logCutoff {
-                        fmt.Println("Leave on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        //fmt.Println("Leave on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -219,20 +219,20 @@ func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
         reply.Err         = ErrNoConcensus
     }
 
-    fmt.Println("Leave on ", sm.me, " args:", *args, " reply: ", *reply)
+    //fmt.Println("Leave on ", sm.me, " args:", *args, " reply: ", *reply)
     sm.mu.Unlock()
     return
 }
 
 func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
     sm.mu.Lock()
-    fmt.Println("Move on ", sm.me, "Move args:", *args)
+    //fmt.Println("Move on ", sm.me, "Move args:", *args)
     // Check leader
     term, isLeader := sm.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-        fmt.Println("Move on ", sm.me, " Not a Leader")
+        //fmt.Println("Move on ", sm.me, " Not a Leader")
         sm.mu.Unlock()
         return
     }
@@ -242,7 +242,7 @@ func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
     if keyFound && opId == args.OpId {
 		reply.WrongLeader = false
 		reply.Err		  = OK
-        fmt.Println("Move on ", sm.me, " Duplicate command ")
+        //fmt.Println("Move on ", sm.me, " Duplicate command ")
         sm.mu.Unlock()
         return
     }
@@ -254,7 +254,7 @@ func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
 				 Shard			 : args.Shard}
 
     index, term, isLeader := sm.rf.Start(moveOp)
-    fmt.Println("Move on ", sm.me, " Start Called, index: ", index, " Op:", moveOp)
+    //fmt.Println("Move on ", sm.me, " Start Called, index: ", index, " Op:", moveOp)
 
     if !isLeader {
         reply.WrongLeader = true
@@ -269,7 +269,7 @@ func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
     go func () {
         for {
             sm.mu.Lock()
-            fmt.Println("*********** Move Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", moveOp)
+            //fmt.Println("*********** Move Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", moveOp)
             newterm, isCurrLeader := sm.rf.GetState()
             idxApplied := (sm.applyIdx >= index)
             sm.mu.Unlock()
@@ -282,10 +282,10 @@ func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
                         } else {
                             applyIdxChan <- false
                         }
-                        fmt.Println("Move on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
+                        //fmt.Println("Move on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
                         break
                     } else if logCutoff {
-                        fmt.Println("Move on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        //fmt.Println("Move on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -308,20 +308,20 @@ func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
         reply.Err         = ErrNoConcensus
     }
 
-    fmt.Println("Move on ", sm.me, " args:", *args, " reply: ", *reply)
+    //fmt.Println("Move on ", sm.me, " args:", *args, " reply: ", *reply)
     sm.mu.Unlock()
     return
 }
 
 func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
     sm.mu.Lock()
-    fmt.Println("Query on ", sm.me, "Query args:", *args)
+    //fmt.Println("Query on ", sm.me, "Query args:", *args)
     // Check leader
     term, isLeader := sm.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-        fmt.Println("Query on ", sm.me, " Not a Leader")
+        //fmt.Println("Query on ", sm.me, " Not a Leader")
         sm.mu.Unlock()
         return
     }
@@ -331,7 +331,7 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
     if keyFound && opId == args.OpId {
 		reply.WrongLeader = false
 		reply.Err		  = OK
-        fmt.Println("Query on ", sm.me, " Duplicate command ")
+        //fmt.Println("Query on ", sm.me, " Duplicate command ")
         sm.mu.Unlock()
         return
     }
@@ -342,7 +342,7 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
                   Num             : args.Num}
 
     index, term, isLeader := sm.rf.Start(queryOp)
-    fmt.Println("Query on ", sm.me, " Start Called, index: ", index, " Op:", queryOp)
+    //fmt.Println("Query on ", sm.me, " Start Called, index: ", index, " Op:", queryOp)
 
     if !isLeader {
         reply.WrongLeader = true
@@ -357,7 +357,7 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
     go func () {
         for {
             sm.mu.Lock()
-            fmt.Println("*********** Query Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", queryOp)
+            //fmt.Println("*********** Query Waiting on ", sm.me, " index: ", index, "applyIdx: ", sm.applyIdx, " Op:", queryOp)
             newterm, isCurrLeader := sm.rf.GetState()
             idxApplied := (sm.applyIdx >= index)
             sm.mu.Unlock()
@@ -370,10 +370,10 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
                         } else {
                             applyIdxChan <- false
                         }
-                        fmt.Println("Query on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
+                        //fmt.Println("Query on ", sm.me, "index", index, " Op:", nxtOp, "Breaking Off")
                         break
                     } else if logCutoff {
-                        fmt.Println("Query on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        //fmt.Println("Query on ", sm.me, "index", index, "Breaking Off. Not removed by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -401,7 +401,7 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
         reply.Err         = ErrNoConcensus
     }
 
-    fmt.Println("Query on ", sm.me, " args:", *args, " reply: ", *reply)
+    //fmt.Println("Query on ", sm.me, " args:", *args, " reply: ", *reply)
     sm.mu.Unlock()
     return
 }
@@ -415,7 +415,7 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
 //
 func (sm *ShardMaster) Kill() {
     sm.mu.Lock()
-    fmt.Println("Killing Shard server: ", sm.me)
+    //fmt.Println("Killing Shard server: ", sm.me)
     sm.rf.Kill()
     sm.status = DOWN
     sm.mu.Unlock()
@@ -455,11 +455,11 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 	// Your code here.
     go func() {
-        fmt.Println("ApplyCh on ShardMaster", sm.me, " Starting to listen")
+        //fmt.Println("ApplyCh on ShardMaster", sm.me, " Starting to listen")
         for {
             sm.mu.Lock()
             if sm.status != UP {
-                fmt.Println("Ending ShardMaster:", sm.me, "listening thread")
+                //fmt.Println("Ending ShardMaster:", sm.me, "listening thread")
                 sm.mu.Unlock()
                 break
             }
@@ -472,13 +472,13 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
             sm.applyTerm = appMsg.Term
 
             nxtOp := appMsg.Command.(Op)
-            fmt.Println("ApplyCh on shardMaster", sm.me, "nxtOp", nxtOp)
+            //fmt.Println("ApplyCh on shardMaster", sm.me, "nxtOp", nxtOp)
             //Duplicate Detection
             opId, keyFound := sm.clientReqMap[nxtOp.ClientId]
             if !(keyFound && opId == nxtOp.OpId) {
                 sm.clientReqMap[nxtOp.ClientId] = nxtOp.OpId
 				if nxtOp.Operation == "Join" {
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "nxtOp.Servers", nxtOp.Servers)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "nxtOp.Servers", nxtOp.Servers)
 					prvIdx := len(sm.configs)-1
 					newgroups := make(map[int][]string)
                     var newshards [NShards]int
@@ -502,7 +502,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 							}
 						}
 					}
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "oldgroups", newgroups, "oldshards", sm.configs[prvIdx].Shards, "oldClusters", oldClusters, "Old RevMap", RevMap)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "oldgroups", newgroups, "oldshards", sm.configs[prvIdx].Shards, "oldClusters", oldClusters, "Old RevMap", RevMap)
 
 					var newClusters []int
 					for key, value := range nxtOp.Servers {
@@ -514,7 +514,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 					}
 
                     if len(newClusters) == 0 {
-                        fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join. No new clusters to add")
+                        //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join. No new clusters to add")
                         sm.mu.Unlock()
                         continue
                     }
@@ -526,7 +526,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
                         newLimit = 10
                     }
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "newgroups", newgroups, "newClusters", newClusters, "newLimit", newLimit)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "newgroups", newgroups, "newClusters", newClusters, "newLimit", newLimit)
 
 					positions := []int{}
                     if len(RevMap) > 0 {
@@ -548,7 +548,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
                     }
 
 					sort.Ints(positions)
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "empty positions in RevMap", positions)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "empty positions in RevMap", positions)
 
 					for _, value := range newClusters {
                         posSlice := []int{}
@@ -581,7 +581,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 						}
                     }
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "New RevMap", RevMap)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "New RevMap", RevMap)
 
 					for key, value := range RevMap {
 						for _, idx := range value {
@@ -589,7 +589,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 						}
 					}
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "New Num", prvIdx+1, "New Shards", newshards, "New Groups", newgroups)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Join", "New Num", prvIdx+1, "New Shards", newshards, "New Groups", newgroups)
 
 					newconfig := Config{
 						Num		: prvIdx+1,
@@ -598,7 +598,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 					sm.configs = append(sm.configs, newconfig)
                 } else if nxtOp.Operation == "Leave" {
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "nxtOp.GIDs", nxtOp.GIDs)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "nxtOp.GIDs", nxtOp.GIDs)
 					prvIdx := len(sm.configs)-1
 					newgroups := make(map[int][]string)
                     var newshards [NShards]int
@@ -626,7 +626,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 						}
 					}
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "oldgroups", newgroups, "oldshards", sm.configs[prvIdx].Shards, "oldClusters", oldClusters, "RevMap", RevMap)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "oldgroups", newgroups, "oldshards", sm.configs[prvIdx].Shards, "oldClusters", oldClusters, "RevMap", RevMap)
 
 					var remClusters []int
 					for _, key := range nxtOp.GIDs {
@@ -638,7 +638,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 					}
 
                     if len(remClusters) == 0 {
-                        fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave. No clusters there to remove")
+                        //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave. No clusters there to remove")
                         sm.mu.Unlock()
                         continue
                     }
@@ -650,7 +650,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
                         newLimit = 10
                     }
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "newgroups", newgroups, "remClusters", remClusters, "newLimit", newLimit)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "newgroups", newgroups, "remClusters", remClusters, "newLimit", newLimit)
 
 					positions := []int{}
 					for _, cluster := range remClusters {
@@ -659,7 +659,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 					}
 
 					sort.Ints(positions)
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "empty positions in RevMap", positions)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "empty positions in RevMap", positions)
 
 					var finalClusters []int
 					for _, ocl := range oldClusters {
@@ -704,7 +704,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 						}
                     }
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "New RevMap", RevMap)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "New RevMap", RevMap)
 
 					for key, value := range RevMap {
 						for _, idx := range value {
@@ -712,7 +712,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 						}
 					}
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "New Num", prvIdx+1, "New Shards", newshards, "New Groups", newgroups)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Leave", "New Num", prvIdx+1, "New Shards", newshards, "New Groups", newgroups)
 					newconfig := Config{
 						Num		: prvIdx+1,
 						Shards	: newshards,
@@ -720,7 +720,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 					sm.configs = append(sm.configs, newconfig)
                 } else if nxtOp.Operation == "Move" {
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move")
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move")
 					prvIdx := len(sm.configs)-1
 					newgroups := make(map[int][]string)
                     var newshards [NShards]int
@@ -738,11 +738,11 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 					for idx, value := range oldshards {
 						newshards[idx] = value
 					}
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move", "Old Num", prvIdx, "Old Shards", newshards, "Old Groups", newgroups)
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move", "Change Shard:", nxtOp.Shard, " to Cluster:", nxtOp.GID)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move", "Old Num", prvIdx, "Old Shards", newshards, "Old Groups", newgroups)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move", "Change Shard:", nxtOp.Shard, " to Cluster:", nxtOp.GID)
 					newshards[nxtOp.Shard] = nxtOp.GID
 
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move", "New Num", prvIdx+1, "New Shards", newshards, "New Groups", newgroups)
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Move", "New Num", prvIdx+1, "New Shards", newshards, "New Groups", newgroups)
 					newconfig := Config{
 					    Num		: prvIdx+1,
 					    Shards	: newshards,
@@ -750,7 +750,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 					sm.configs = append(sm.configs, newconfig)
 				} else if nxtOp.Operation == "Query" {
-                    fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Query")
+                    //fmt.Println("ApplyCh on shardMaster", sm.me, "Applying Query")
 				}
             }
             sm.mu.Unlock()

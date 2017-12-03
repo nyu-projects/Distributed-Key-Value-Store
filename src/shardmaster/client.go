@@ -8,7 +8,7 @@ import "labrpc"
 import "time"
 import "crypto/rand"
 import "math/big"
-import "fmt"
+//import "fmt"
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
@@ -44,9 +44,9 @@ func (ck *Clerk) Query(num int) Config {
 		// try each known server.
 		for _, srv := range ck.servers {
 		    var reply QueryReply
-		    fmt.Println("Client: ", ck.clientId, "Sending Query, args: ", args)
+		    //fmt.Println("Client: ", ck.clientId, "Sending Query, args: ", args)
 		    ok := srv.Call("ShardMaster.Query", args, &reply)
-		    fmt.Println("Client: ", ck.clientId, "Query, reply: ", reply)
+		    //fmt.Println("Client: ", ck.clientId, "Query, reply: ", reply)
             if ok && reply.WrongLeader == false {
                 return reply.Config
             }
@@ -78,9 +78,9 @@ func (ck *Clerk) Join(servers map[int][]string) {
         // try each known server.
         for _, srv := range ck.servers {
             var reply JoinReply
-		    fmt.Println("Client: ", ck.clientId, "Sending Join, args: ", args)
+		    //fmt.Println("Client: ", ck.clientId, "Sending Join, args: ", args)
             ok := srv.Call("ShardMaster.Join", args, &reply)
-		    fmt.Println("Client: ", ck.clientId, "Join, reply: ", reply)
+		    //fmt.Println("Client: ", ck.clientId, "Join, reply: ", reply)
             if ok && reply.WrongLeader == false {
                 return
             }
@@ -112,9 +112,9 @@ func (ck *Clerk) Leave(gids []int) {
         // try each known server.
         for _, srv := range ck.servers {
             var reply LeaveReply
-		    fmt.Println("Client: ", ck.clientId, "Sending Leave, args: ", args)
+		    //fmt.Println("Client: ", ck.clientId, "Sending Leave, args: ", args)
             ok := srv.Call("ShardMaster.Leave", args, &reply)
-		    fmt.Println("Client: ", ck.clientId, "Leave, reply: ", reply)
+		    //fmt.Println("Client: ", ck.clientId, "Leave, reply: ", reply)
             if ok && reply.WrongLeader == false {
                 return
             }
@@ -147,9 +147,9 @@ func (ck *Clerk) Move(shard int, gid int) {
         // try each known server.
         for _, srv := range ck.servers {
             var reply MoveReply
-		    fmt.Println("Client: ", ck.clientId, "Sending Move, args: ", args)
+		    //fmt.Println("Client: ", ck.clientId, "Sending Move, args: ", args)
             ok := srv.Call("ShardMaster.Move", args, &reply)
-		    fmt.Println("Client: ", ck.clientId, "Move, reply: ", reply)
+		    //fmt.Println("Client: ", ck.clientId, "Move, reply: ", reply)
             if ok && reply.WrongLeader == false {
                 return
             }
