@@ -8,6 +8,7 @@ package shardkv
 //
 // You will have to modify these definitions.
 //
+import "shardmaster"
 
 const (
 	OK            = "OK"

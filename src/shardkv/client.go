@@ -63,7 +63,7 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 
     ck.clientId = nrand()
     ck.leaderId = 0
-    ck.opId     = 0
+    ck.opId     = int64(0)
 	return ck
 }
 
