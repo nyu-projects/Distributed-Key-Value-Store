@@ -74,7 +74,6 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 // You will have to modify this function.
 //
 func (ck *Clerk) Get(key string) string {
-    opid := nrand()
 	args := GetArgs{}
 	args.Key = key
     ck.opId++
@@ -111,7 +110,6 @@ func (ck *Clerk) Get(key string) string {
 // You will have to modify this function.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-    opid := nrand()
 	args := PutAppendArgs{}
 	args.Key = key
 	args.Value = value
