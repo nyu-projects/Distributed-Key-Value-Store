@@ -20,7 +20,7 @@ import "labrpc"
 import "time"
 import "math/rand"
 //import "math"
-import "fmt"
+//import "fmt"
 //import "strings"
 import "bytes"
 import "encoding/gob"
@@ -691,7 +691,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
                         Term : rf.currentTerm}
 
     rf.log = append(rf.log, currentEntry)
-    fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", rf.log, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "indexOffset:", rf.indexOffset)
+    //fmt.Println("Start srv", rf.me, "Received command: ", command, "Current Log", rf.log, "commitIdx", rf.commitIndex, "lastApplied", rf.lastApplied, "indexOffset:", rf.indexOffset)
 	index := getOffsetIdx(len(rf.log)-1, rf.indexOffset)
 	term := rf.currentTerm
 	isLeader := true
