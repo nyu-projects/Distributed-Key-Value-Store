@@ -66,7 +66,7 @@ type PersistSnapshotData struct {
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	kv.mu.Lock()
-	fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args)
+	fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args , "kv.kvMap:", kv.kvMap)
     // Check leader
     term, isLeader := kv.rf.GetState()
     if !isLeader {
@@ -100,6 +100,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
         return
     }
 */
+/*
 	//Duplicate Detection
     opId, keyFound := kv.clientReqMap[args.ClientId]
 	if keyFound && opId == args.OpId {
@@ -116,7 +117,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 		kv.mu.Unlock()
 		return
 	}
-
+*/
 	getOp := Op{OpId            : args.OpId,
 				ClientId        : args.ClientId,
 				Operation       : "Get",
@@ -201,7 +202,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
-	fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args)
+	fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args, "kv.kvMap", kv.kvMap)
     // Check leader
     term, isLeader := kv.rf.GetState()
     if !isLeader {
@@ -238,7 +239,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
         return
     }
 */
-
+/*
     //Duplicate Detection
     opId, keyFound := kv.clientReqMap[args.ClientId]
     if keyFound && opId == args.OpId {
@@ -248,7 +249,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
         kv.mu.Unlock()
         return
     }
-
+*/
     getOp := Op{OpId            : args.OpId,
                 ClientId        : args.ClientId,
                 Operation       : args.Op,
@@ -458,12 +459,11 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 				nxtOp := appMsg.Command.(Op)
 				fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "nxtOp", nxtOp)
                 if nxtOp.Operation == "Consensus" {
-                    if nxtOp.ConfigChangeArgs.Config.Num > kv.config.Num {
+                    //if nxtOp.ConfigChangeArgs.Config.Num > kv.config.Num {
 						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applying Configuration Change")
                         appconfig := nxtOp.ConfigChangeArgs.Config
                         kv.config = shardmaster.Config{Num  :   appconfig.Num}
 						kv.config.Groups	=	make(map[int][]string)
-
 						var newshards [shardmaster.NShards]int
     					for i, value := range appconfig.Shards {
         					newshards[i] = value
@@ -475,7 +475,6 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
         						kv.config.Groups[key] = append(kv.config.Groups[key], val_i)
 							}
     					}
-
                         appkvs := nxtOp.ConfigChangeArgs.NewKVs
 						for key, val := range appkvs {
 							kv.kvMap[key] = []string{}
@@ -483,7 +482,6 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 								kv.kvMap[key] = append(kv.kvMap[key], val_i)
 							}
 						}
-
                         appcrm := nxtOp.ConfigChangeArgs.ClientReqMap
                         for clientId, newOpId := range appcrm {
 							oldOpId, there := kv.clientReqMap[clientId]
@@ -494,7 +492,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.config:", kv.config)
 						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.kvMap:", kv.kvMap)
 						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.clientReqMap:", kv.clientReqMap)
-                    }
+                    //}
                 } else {
 				    //shard := key2shard(nxtOp.Key)
 				    //if kv.gid == kv.config.Shards[shard] {
@@ -513,6 +511,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
             		        }
 	    				    kv.clientReqMap[nxtOp.ClientId] = nxtOp.OpId
     	            	}
+						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applied: ", nxtOp, "kv.kvMap", kv.kvMap)
 					//} else {
                     //    fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "nxtOp", nxtOp, "No longer reponsible for shard. Not applying")
                     //}
@@ -565,7 +564,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 
 		    kv.mu.Lock()
 
-                if newconfig.Num > kv.newconfig.Num {
+                //if newconfig.Num > kv.newconfig.Num {
                     fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updating newconfig to Number:", newconfig.Num)
                         kv.newconfig = shardmaster.Config{Num  :   newconfig.Num}
                         kv.newconfig.Groups    =   make(map[int][]string)
@@ -583,7 +582,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
                         }
 
                     fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updated newconfig to:", kv.newconfig)
-                }
+                //}
 
     		if newconfig.Num > kv.config.Num {
 				startConfigNum := kv.config.Num + 1
