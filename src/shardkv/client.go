@@ -42,6 +42,7 @@ type Clerk struct {
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
     clientId    int64
+    opId        int64
     leaderId    int
 }
 
@@ -62,7 +63,7 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 
     ck.clientId = nrand()
     ck.leaderId = 0
-
+    ck.opId     = 0
 	return ck
 }
 
@@ -76,7 +77,8 @@ func (ck *Clerk) Get(key string) string {
     opid := nrand()
 	args := GetArgs{}
 	args.Key = key
-    args.OpId = opid
+    ck.opId++
+    args.OpId = ck.opId
     args.ClientId = ck.clientId
 	for {
 		shard := key2shard(key)
@@ -101,7 +103,6 @@ func (ck *Clerk) Get(key string) string {
 		// ask master for the latest configuration.
 		ck.config = ck.sm.Query(-1)
 	}
-
 	return ""
 }
 
@@ -115,7 +116,8 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Key = key
 	args.Value = value
 	args.Op = op
-    args.OpId     = opid
+    ck.opId++
+    args.OpId     = ck.opId
     args.ClientId = ck.clientId
 
 	for {
@@ -145,6 +147,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 func (ck *Clerk) Put(key string, value string) {
 	ck.PutAppend(key, value, "Put")
 }
+
 func (ck *Clerk) Append(key string, value string) {
 	ck.PutAppend(key, value, "Append")
 }

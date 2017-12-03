@@ -15,6 +15,7 @@ const (
 	ErrWrongGroup = "ErrWrongGroup"
     ErrWrongLeader      = "ErrWrongLeader"
     ErrNoConcensus      = "ErrNoConcensus"
+    ErrOldConfig        = "ErrOldConfig"
 )
 
 type Err string
@@ -44,4 +45,22 @@ type GetReply struct {
 	WrongLeader bool
 	Err         Err
 	Value       string
+}
+
+type GetShardsArgs struct {
+    ConfigNumber        int
+    RequestedShards     map[int]bool
+}
+
+type GetShardsReply struct {
+    RequestedKVs        map[string][]string
+    ClientReqMap        map[int64]int64
+    WrongLeader         bool
+    Err                 Err
+}
+
+type ConfigChange struct {
+    Config          shardmaster.Config
+    NewKVs          map[string][]string
+    ClientReqMap    map[int64]int64
 }

@@ -415,6 +415,7 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
 //
 func (sm *ShardMaster) Kill() {
     sm.mu.Lock()
+    fmt.Println("Killing Shard server: ", sm.me)
     sm.rf.Kill()
     sm.status = DOWN
     sm.mu.Unlock()
