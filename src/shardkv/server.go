@@ -8,7 +8,7 @@ import (
     "raft"
     "sync"
     "strings"
-    "fmt"
+//    "fmt"
     "time"
     "bytes"
 )
@@ -66,13 +66,13 @@ type PersistSnapshotData struct {
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	kv.mu.Lock()
-	fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args , "kv.kvMap:", kv.kvMap)
+	//fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args , "kv.kvMap:", kv.kvMap)
     // Check leader
     term, isLeader := kv.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-        fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Not a Leader")
+        //fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Not a Leader")
         kv.mu.Unlock()
         return
     }
@@ -81,26 +81,26 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
     shard := key2shard(args.Key)
     if kv.gid != kv.newconfig.Shards[shard] {
 		reply.Err			= ErrWrongGroup
-		fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Wrong Group")
+		//fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Wrong Group")
 		kv.mu.Unlock()
 		return
 	}
 
     if kv.newconfig.Num > kv.config.Num {
         reply.Err           = ErrNoConcensus
-        fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
+        //fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
         kv.mu.Unlock()
         return
     }
 /*
     else if (kv.gid == kv.newconfig.Shards[shard]) && (kv.gid != kv.config.Shards[shard]) {
         reply.Err           = ErrNoConcensus
-        fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
+        //fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
         kv.mu.Unlock()
         return
     }
 */
-/*
+
 	//Duplicate Detection
     opId, keyFound := kv.clientReqMap[args.ClientId]
 	if keyFound && opId == args.OpId {
@@ -113,18 +113,18 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
             reply.WrongLeader = false
             reply.Err         = ErrNoKey
         }
-		fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Duplicate command ")
+		//fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Duplicate command ")
 		kv.mu.Unlock()
 		return
 	}
-*/
+
 	getOp := Op{OpId            : args.OpId,
 				ClientId        : args.ClientId,
 				Operation       : "Get",
 				Key             : args.Key}
 
 	index, term, isLeader := kv.rf.Start(getOp)
-	fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Start Called, index: ", index, " Op:", getOp)
+	//fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Start Called, index: ", index, " Op:", getOp)
 
 	if !isLeader {
 		reply.WrongLeader = true
@@ -140,7 +140,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	go func () {
         for {
             kv.mu.Lock()
-			fmt.Println("*********** Get Waiting on ", "gid: ", kv.gid, "srv: ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
+			//fmt.Println("*********** Get Waiting on ", "gid: ", kv.gid, "srv: ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
             newterm, isCurrLeader := kv.rf.GetState()
             idxApplied := (kv.applyIdx >= index)
             //currshard := key2shard(getOp.Key)
@@ -155,10 +155,10 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
             	    	} else {
         	           		applyIdxChan <- false
     	            	}
-		            	fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+		            	//fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
 	                	break
 	            	} else if logCutoff {
-                        fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, "Breaking Off. Not removed by snapshot")
+                        //fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, "Breaking Off. Not removed by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -195,61 +195,61 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 		reply.Err		  = ErrNoConcensus
 	}
 
-	fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " args:", *args, " reply: ", *reply)
+	//fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " args:", *args, " reply: ", *reply)
 	kv.mu.Unlock()
 	return
 }
 
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
-	fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args, "kv.kvMap", kv.kvMap)
+	//fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting args:", *args, "kv.kvMap", kv.kvMap)
     // Check leader
     term, isLeader := kv.rf.GetState()
     if !isLeader {
         reply.WrongLeader = true
         reply.Err         = ErrWrongLeader
-        fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Not a Leader")
+        //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Not a Leader")
         kv.mu.Unlock()
         return
     }
 
 	//check group
-    fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "kv.config:", kv.config)
-    fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "kv.newconfig:", kv.newconfig)
+    //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "kv.config:", kv.config)
+    //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "kv.newconfig:", kv.newconfig)
     shard := key2shard(args.Key)
-    fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "key:", args.Key, "shard:", shard, "kv.gid", kv.gid, "kv.newconfig.Shards[shard]:", kv.newconfig.Shards[shard], "kv.config.Shards[shard]", kv.config.Shards[shard])
+    //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "key:", args.Key, "shard:", shard, "kv.gid", kv.gid, "kv.newconfig.Shards[shard]:", kv.newconfig.Shards[shard], "kv.config.Shards[shard]", kv.config.Shards[shard])
     if kv.gid != kv.newconfig.Shards[shard] {
         reply.Err           = ErrWrongGroup
-        fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Wrong Group")
+        //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Wrong Group")
         kv.mu.Unlock()
         return
     }
 
     if kv.newconfig.Num > kv.config.Num {
         reply.Err           = ErrNoConcensus
-        fmt.Println("Get on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
+        //fmt.Println("Put Append on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
         kv.mu.Unlock()
         return
     }
 /*
     else if (kv.gid == kv.newconfig.Shards[shard]) && (kv.gid != kv.config.Shards[shard]) {
         reply.Err           = ErrNoConcensus
-        fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
+        //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Try again after configuration update goes through")
         kv.mu.Unlock()
         return
     }
 */
-/*
+
     //Duplicate Detection
     opId, keyFound := kv.clientReqMap[args.ClientId]
     if keyFound && opId == args.OpId {
 		reply.WrongLeader = false
 		reply.Err         = OK
-        fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Duplicate command ")
+        //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Duplicate command ")
         kv.mu.Unlock()
         return
     }
-*/
+
     getOp := Op{OpId            : args.OpId,
                 ClientId        : args.ClientId,
                 Operation       : args.Op,
@@ -257,7 +257,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 				Value			: args.Value}
 
     index, term, isLeader := kv.rf.Start(getOp)
-    fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Start Called, index: ", index, " Op:", getOp)
+    //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " Start Called, index: ", index, " Op:", getOp)
 
     if !isLeader {
         reply.WrongLeader = true
@@ -273,7 +273,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
     go func () {
         for {
             kv.mu.Lock()
-			fmt.Println("########### PutAppend Waiting on ", "gid: ", kv.gid, "srv: ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
+			//fmt.Println("########### PutAppend Waiting on ", "gid: ", kv.gid, "srv: ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
             newterm, isCurrLeader := kv.rf.GetState()
             idxApplied := (kv.applyIdx >= index)
 			//currshard := key2shard(getOp.Key)
@@ -288,10 +288,10 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		                } else {
     						applyIdxChan <- false
 	        	        }
-	    	            fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+	    	            //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
     		            break
 	                } else if logCutoff {
-                        fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index,  "Breaking Off. Log cutoff by snapshot")
+                        //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index,  "Breaking Off. Log cutoff by snapshot")
                         applyIdxChan <- false
                         break
                     }
@@ -321,7 +321,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
         reply.Err         = ErrNoConcensus
 	}
 
-    fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " args:", *args, " reply: ", *reply)
+    //fmt.Println("PutAppend on ", "gid: ", kv.gid, "srv: ", kv.me, " args:", *args, " reply: ", *reply)
     kv.mu.Unlock()
     return
 }
@@ -334,7 +334,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 //
 func (kv *ShardKV) Kill() {
     kv.mu.Lock()
-    fmt.Println("Killing kv server ", "gid: ", kv.gid, "srv: ", kv.me, " gid:", kv.gid)
+    //fmt.Println("Killing kv server ", "gid: ", kv.gid, "srv: ", kv.me, " gid:", kv.gid)
     kv.rf.Kill()
     kv.status = DOWN
     kv.mu.Unlock()
@@ -347,7 +347,7 @@ func (kv *ShardKV) snapshotPersist() {
     var pData PersistSnapshotData
     pData = PersistSnapshotData{kv.applyIdx, kv.applyTerm, kv.kvMap, kv.clientReqMap, kv.config}
     e.Encode(pData)
-    //fmt.Println("Snapshot Persist: srv", "gid: ", kv.gid, "srv: ", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
+    ////fmt.Println("Snapshot Persist: srv", "gid: ", kv.gid, "srv: ", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
     data := w.Bytes()
     kv.persister.SaveSnapshot(data)
 }
@@ -360,7 +360,7 @@ func (kv *ShardKV) readSnapshotPersist(data []byte) bool {
     if data == nil || len(data) < 1 { // bootstrap without any state?
         return false
     }
-    //fmt.Println("Read Snapshot Persist: srv", "gid: ", kv.gid, "srv: ", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
+    ////fmt.Println("Read Snapshot Persist: srv", "gid: ", kv.gid, "srv: ", kv.me, " pData.ApplyIdx:", pData.LastIncIdx, " pData.ApplyTerm:", pData.LastIncTerm)
     kv.applyIdx     = pData.LastIncIdx
     kv.applyTerm    = pData.LastIncTerm
 
@@ -427,21 +427,22 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
     if !ok {
 		kv.applyIdx  = -1
 		kv.applyTerm = -1
-        kv.config = kv.mck.Query(-1)
+        //kv.config = kv.mck.Query(-1)
+        kv.config = kv.mck.Query(0)
 	}
     kv.newconfig = kv.mck.Query(-1)
     kv.status = UP
     kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.rf.UpdateRaftState(kv.applyIdx, kv.applyTerm)
 	//kv.config = kv.mck.Query(-1)
-	//fmt.Println("On kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updating config to:", kv.config)
+	////fmt.Println("On kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updating config to:", kv.config)
 
 	go func() {
-		fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, " Starting to listen")
+		//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, " Starting to listen")
         for {
             kv.mu.Lock()
             if kv.status != UP {
-                fmt.Println("Ending kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "listening thread")
+                //fmt.Println("Ending kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "listening thread")
                 kv.mu.Unlock()
                 break
             }
@@ -449,7 +450,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 			appMsg := <-kv.applyCh
 			kv.mu.Lock()
 			if appMsg.UseSnapshot {
-                fmt.Println("Got new snapshot on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applying")
+                //fmt.Println("Got new snapshot on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applying")
 				kv.readSnapshotPersist(appMsg.Snapshot)
 				kv.snapshotPersist()
 			} else {
@@ -457,10 +458,10 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 				kv.applyTerm = appMsg.Term
 
 				nxtOp := appMsg.Command.(Op)
-				fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "nxtOp", nxtOp)
+				//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "nxtOp", nxtOp)
                 if nxtOp.Operation == "Consensus" {
-                    //if nxtOp.ConfigChangeArgs.Config.Num > kv.config.Num {
-						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applying Configuration Change")
+                    if nxtOp.ConfigChangeArgs.Config.Num > kv.config.Num {
+						//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applying Configuration Change")
                         appconfig := nxtOp.ConfigChangeArgs.Config
                         kv.config = shardmaster.Config{Num  :   appconfig.Num}
 						kv.config.Groups	=	make(map[int][]string)
@@ -489,10 +490,10 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 								kv.clientReqMap[clientId] = newOpId
 							}
 						}
-						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.config:", kv.config)
-						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.kvMap:", kv.kvMap)
-						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.clientReqMap:", kv.clientReqMap)
-                    //}
+						//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.config:", kv.config)
+						//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.kvMap:", kv.kvMap)
+						//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "kv.clientReqMap:", kv.clientReqMap)
+                    }
                 } else {
 				    //shard := key2shard(nxtOp.Key)
 				    //if kv.gid == kv.config.Shards[shard] {
@@ -511,9 +512,9 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
             		        }
 	    				    kv.clientReqMap[nxtOp.ClientId] = nxtOp.OpId
     	            	}
-						fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applied: ", nxtOp, "kv.kvMap", kv.kvMap)
+						//fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "Applied: ", nxtOp, "kv.kvMap", kv.kvMap)
 					//} else {
-                    //    fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "nxtOp", nxtOp, "No longer reponsible for shard. Not applying")
+                    //    //fmt.Println("ApplyCh on srv", "gid: ", kv.gid, "srv: ", kv.me, "nxtOp", nxtOp, "No longer reponsible for shard. Not applying")
                     //}
                 }
 			}
@@ -527,15 +528,15 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 				kv.mu.Lock()
 
 	            if kv.status != UP {
-    	            fmt.Println("Ending kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "snapshot thread. ending")
+    	            //fmt.Println("Ending kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "snapshot thread. ending")
         	        kv.mu.Unlock()
             	    break
             	}
 
                 ratio := float64(persister.RaftStateSize()) / float64(maxraftstate)
 	            if ratio > 0.95 {
-                    //fmt.Println("Snapshot thread: srv:", "gid: ", kv.gid, "srv: ", kv.me, "raftStateSize:", persister.RaftStateSize(), "maxraftstate", maxraftstate, "ratio", ratio)
-                    //fmt.Println("Snapshot thread: srv:", "gid: ", kv.gid, "srv: ", kv.me, "applyIdx:", kv.applyIdx, "applyTerm:", kv.applyTerm)
+                    ////fmt.Println("Snapshot thread: srv:", "gid: ", kv.gid, "srv: ", kv.me, "raftStateSize:", persister.RaftStateSize(), "maxraftstate", maxraftstate, "ratio", ratio)
+                    ////fmt.Println("Snapshot thread: srv:", "gid: ", kv.gid, "srv: ", kv.me, "applyIdx:", kv.applyIdx, "applyTerm:", kv.applyTerm)
                     kv.snapshotPersist()
                     kv.rf.DiscardOldLogs(kv.applyIdx, kv.applyTerm)
 				}
@@ -549,13 +550,14 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
         for {
             kv.mu.Lock()
             if kv.status != UP {
-                fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, ".....Ending.....")
+                //fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, ".....Ending.....")
                 kv.mu.Unlock()
                 break
             }
 			_, isLeader := kv.rf.GetState()
     		if !isLeader {
 				kv.mu.Unlock()
+				time.Sleep(50*time.Millisecond)
 				continue
 			}
             kv.mu.Unlock()
@@ -565,7 +567,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 		    kv.mu.Lock()
 
                 //if newconfig.Num > kv.newconfig.Num {
-                    fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updating newconfig to Number:", newconfig.Num)
+                    //fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updating newconfig to Number:", newconfig.Num)
                         kv.newconfig = shardmaster.Config{Num  :   newconfig.Num}
                         kv.newconfig.Groups    =   make(map[int][]string)
 
@@ -581,29 +583,29 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
                             }
                         }
 
-                    fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updated newconfig to:", kv.newconfig)
+                    //fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Updated newconfig to:", kv.newconfig)
                 //}
 
     		if newconfig.Num > kv.config.Num {
 				startConfigNum := kv.config.Num + 1
 				endConfigNum   := newconfig.Num
-				fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "New config found: ", newconfig)
+				//fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "New config found: ", newconfig)
         		kv.mu.Unlock()
 				for c_i := startConfigNum; c_i <= endConfigNum; c_i++ {
 					nxtconfig := kv.mck.Query(c_i)
-					fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Starting config change for: ", nxtconfig)
+					//fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Starting config change for: ", nxtconfig)
         			ok := kv.UpdateWithNewConfiguration(nxtconfig)
 					if !ok {
-						fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Breaking. ERROR in config change for: ", nxtconfig)
+						//fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Breaking. ERROR in config change for: ", nxtconfig)
 						break
 					}
-					fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Completed config change for: ", nxtconfig)
+					//fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Completed config change for: ", nxtconfig)
 				}
 				kv.mu.Lock()
     		}
 
 			kv.mu.Unlock()
-		    fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "No new config found. Current config number: ", newconfig.Num)
+		    //fmt.Println("Updating config thread: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "No new config found. Current config number: ", newconfig.Num)
 
             time.Sleep(50*time.Millisecond)
         }
@@ -614,7 +616,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 
 func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool {
 	kv.mu.Lock()
-	fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Starting config change for: ", newConfig)
+	//fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Starting config change for: ", newConfig)
 	missingGidShardMap := make(map[int][]int)
 	s_idx := 0
 	for s_idx < shardmaster.NShards {
@@ -630,7 +632,7 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
 		}
 		s_idx += 1
 	}
-	fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "missingGidShardMap:", missingGidShardMap)
+	//fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "missingGidShardMap:", missingGidShardMap)
 	kv.mu.Unlock()
 
 	var configChange ConfigChange
@@ -674,11 +676,11 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
 
 			for _, server := range kv.config.Groups[gid] {
 				srv := kv.make_end(server)
-                fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Sending GetShards RPC, args:", getShardsArgs)
+                //fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Sending GetShards RPC, args:", getShardsArgs)
                 //kv.nu.Unlock()
 				ok := srv.Call("ShardKV.GetShards", &getShardsArgs, &reply)
                 //kv.nu.Lock()
-                fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Received GetShards RPC, reply:", reply)
+                //fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Received GetShards RPC, reply:", reply)
 				if ok {
 					if reply.Err == OK {
 						rpcSuccess = true
@@ -712,17 +714,17 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
 	wait.Wait()
 
 	if !allClear {
-        fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Returning false because allClear is false")
+        //fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Returning false because allClear is false")
 		return false
 	}
 
 	if allClear {
-        fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Starting consensus, configChange:", configChange)
+        //fmt.Println("UpdateWithNewConfiguration: kvserver:", "gid: ", kv.gid, "srv: ", kv.me, "Starting consensus, configChange:", configChange)
         iter := 0
         for iter < 3 {
             iter++
     		kv.mu.Lock()
-	    	fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting for configChange:", configChange)
+	    	//fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "Starting for configChange:", configChange)
 
 		    getOp := Op{Operation       	    : "Consensus",
 					    ConfigChangeArgs        : configChange,
@@ -730,7 +732,7 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
                         OpId                    : int64(kv.me)}
 
     		index, term, isLeader := kv.rf.Start(getOp)
-	    	fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, " Start Called, index: ", index, " Op:", getOp)
+	    	//fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, " Start Called, index: ", index, " Op:", getOp)
 
     		if !isLeader {
 	    		kv.mu.Unlock()
@@ -743,7 +745,7 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
     		go func () {
         	    for {
                 	kv.mu.Lock()
-			    	fmt.Println("*********** Config change consensus Waiting on ", "gid: ", kv.gid, "srv: ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
+			    	//fmt.Println("*********** Config change consensus Waiting on ", "gid: ", kv.gid, "srv: ", kv.me, " index: ", index, "applyIdx: ", kv.applyIdx, " Op:", getOp)
 	                newterm, isCurrLeader := kv.rf.GetState()
     	            idxApplied := (kv.applyIdx >= index)
         	        kv.mu.Unlock()
@@ -756,10 +758,10 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
                 	    	} else {
         	               		applyIdxChan <- false
     	                	}
-		                	fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
+		                	//fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, " Op:", nxtOp, "Breaking Off")
 	                	    break
     	            	} else if logCutoff {
-                            fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, "Breaking Off. Got removed by snapshot")
+                            //fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "index", index, "Breaking Off. Got removed by snapshot")
                             applyIdxChan <- false
                             break
                         }
@@ -774,10 +776,10 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
     		msgApplied := <-applyIdxChan
 
 	    	if msgApplied {
-                fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "!!!!!!Success!!!!!")
+                //fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "!!!!!!Success!!!!!")
 	    		return true
     	    } else {
-                fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "!!!!!!Repeating!!!!!")
+                //fmt.Println("Config change consensus on ", "gid: ", kv.gid, "srv: ", kv.me, "!!!!!!Repeating!!!!!")
 	    	    continue
     	    }
         }
@@ -789,17 +791,17 @@ func (kv *ShardKV) UpdateWithNewConfiguration(newConfig shardmaster.Config) bool
 func (kv *ShardKV) GetShards(args *GetShardsArgs, reply *GetShardsReply) {
     kv.mu.Lock()
 	defer kv.mu.Unlock()
-    fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "args: ", args)
+    //fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "args: ", args)
     _, isLeader := kv.rf.GetState()
     if !isLeader {
-        fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "Not a Leader. Returning")
+        //fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "Not a Leader. Returning")
 		reply.WrongLeader = true
 		reply.Err = ErrWrongLeader
         return
     }
 
     if kv.config.Num < args.ConfigNumber {
-        fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "Still running on older config. Returning")
+        //fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "Still running on older config. Returning")
         reply.Err = ErrOldConfig
         return
     }
@@ -823,6 +825,6 @@ func (kv *ShardKV) GetShards(args *GetShardsArgs, reply *GetShardsReply) {
 		}
 	}
 
-    fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "args:", args, "reply:", reply)
+    //fmt.Println("Get Shards RPC on ", "gid: ", kv.gid, "srv: ", kv.me, "args:", args, "reply:", reply)
 	return
 }

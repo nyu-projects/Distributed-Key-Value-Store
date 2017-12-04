@@ -13,7 +13,7 @@ import "crypto/rand"
 import "math/big"
 import "shardmaster"
 import "time"
-import "fmt"
+//import "fmt"
 import "sync"
 
 //
@@ -91,9 +91,9 @@ func (ck *Clerk) Get(key string) string {
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply GetReply
-                fmt.Println("Client: ", ck.clientId, "Sending Get, args: ", args)
+                //fmt.Println("Client: ", ck.clientId, "Sending Get, args: ", args)
 				ok := srv.Call("ShardKV.Get", &args, &reply)
-                fmt.Println("Client: ", ck.clientId, "Get, reply: ", reply)
+                //fmt.Println("Client: ", ck.clientId, "Get, reply: ", reply)
 				if ok && reply.WrongLeader == false && (reply.Err == OK || reply.Err == ErrNoKey) {
 					return reply.Value
 				}
@@ -130,9 +130,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply PutAppendReply
-                fmt.Println("Client: ", ck.clientId, "Sending PutAppend, args: ", args)
+                //fmt.Println("Client: ", ck.clientId, "Sending PutAppend, args: ", args)
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
-                fmt.Println("Client: ", ck.clientId, "PutAppend, reply: ", reply)
+                //fmt.Println("Client: ", ck.clientId, "PutAppend, reply: ", reply)
 				if ok && reply.WrongLeader == false && reply.Err == OK {
 					return
 				}
