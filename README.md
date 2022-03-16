@@ -1,8 +1,8 @@
 # Distributed-Key-Value-Store
 
 ## Contents
-This repo contains an implementation of RAFT written in golang.
-It also contains an implementation of a distributed key value store built on top of RAFT.
+- RAFT A Go implementation of RAFT
+- A fault-tolerant, sharded key value store built on top of RAFT.
 
 ## RAFT
 Raft is implemented as a Go object type with associated methods, meant to be used as a pluggable module in a larger service. A set of Raft instances talk to each other with RPCs to maintain replicated logs. The Raft interface supports an indefinite sequence of log entries numbered with index numbers. The log entry with a given index will eventually be committed. Raft sends the log entries to the larger service for it to execute.
